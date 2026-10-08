@@ -3,3 +3,4 @@ plotly>=5.22
 pandas>=2.2
 yfinance>=0.2.40
 psycopg[binary]>=3.2
+matplotlib>=3.9
