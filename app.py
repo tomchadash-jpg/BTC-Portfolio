@@ -16,6 +16,8 @@ import engine as E
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
 
+clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
+
 
 # ------------------------------ data layer ------------------------------
 def demo_data():
@@ -32,7 +34,7 @@ def demo_data():
 
 @st.cache_data(ttl=300, show_spinner="טוען נתונים...")
 def load_ledger():
-    url, uid = os.getenv("DATABASE_URL"), os.getenv("USER_ID")
+    url, uid = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
     if not (url and uid):
         return demo_data(), True
     import psycopg
@@ -64,6 +66,10 @@ def signed_qty(txs, aid, idx):
 
 # ------------------------------ load & compute ------------------------------
 (assets, txs), is_demo = load_ledger()
+if not txs:
+    st.info("אין עסקאות עדיין. הוסף בעמוד add transaction בתפריט הצד")
+    st.stop()
+
 start = min(t.timestamp for t in txs).strftime("%Y-%m-%d")
 idx = pd.date_range(start, datetime.now().date(), freq="D")
 
