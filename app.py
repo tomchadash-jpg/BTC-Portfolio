@@ -110,6 +110,13 @@ def contributions(txs, idx):
     return pd.Series(d, dtype=float).reindex(idx).fillna(0.0)
 
 
+def avg_fx(txs, idx, fx):
+    """Weighted-average USD/ILS rate at which the given BUYs were made (1.0 in USD view)."""
+    c = contributions([t for t in txs if t.type == "BUY"], idx)
+    usd = float(c.sum())
+    return float((c * fx).sum()) / usd if usd else 1.0
+
+
 # ------------------------------ load ------------------------------
 (assets, txs), is_demo = load_ledger()
 if not txs:
@@ -185,6 +192,16 @@ inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far,
 invested_now = float(inv_cum.iloc[-1])
 nw_now = float(summ.net_worth) * fx_now
 
+afx, unreal_ccy, cost_ccy = {}, 0.0, 0.0
+for a in ids:
+    if a not in positions:
+        continue
+    afx[a] = avg_fx([t for t in tx_f if t.asset_id == a], idx, fx)
+    cost_a = float(positions[a].cost_basis) * afx[a]
+    unreal_ccy += float(summ.by_asset[a]["value"]) * fx_now - cost_a
+    cost_ccy += cost_a
+unreal_pct = unreal_ccy / cost_ccy * 100 if cost_ccy else 0.0
+
 # ------------------------------ UI ------------------------------
 live_txt = " · ".join(f"{s} ${live[CG[s]]:,.0f}" for s in (a[0] for a in assets.values()) if CG.get(s) in live)
 st.caption(f"עודכן {loaded_at():%H:%M}" + (f" · מחיר חי (CoinGecko): {live_txt}" if live_txt else "")
@@ -194,7 +211,7 @@ pl = nw_now - invested_now
 k = st.columns(4)
 k[0].metric("שווי נקי", money(nw_now))
 k[1].metric("סה״כ הושקע", money(invested_now), f"{'+' if pl >= 0 else '-'}{sym}{abs(pl):,.0f} רווח/הפסד כולל")
-k[2].metric("רווח צף (טרם נמכר)", money(float(summ.unrealized) * fx_now), f"{float(summ.unrealized_pct):+.1f}%")
+k[2].metric("רווח צף (טרם נמכר)", money(unreal_ccy), f"{unreal_pct:+.1f}%")
 k[3].metric("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now))
 k2 = st.columns(2)
 k2[0].metric("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now))
@@ -204,23 +221,21 @@ k3[0].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%
 k3[1].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
 held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
 if held:
-    inv_usd = float(contributions(tx_f, idx).sum())
-    avg_fx = invested_now / inv_usd if inv_usd else 1.0      # weighted-average FX of the purchases
     kc = st.columns(min(len(held), 3))
     for i, a in enumerate(held):
         b = summ.by_asset[a]
-        avg = float(b["avg_cost"]) * avg_fx
+        avg = float(b["avg_cost"]) * afx[a]
         now = float(b["price"]) * fx_now
         kc[i % len(kc)].metric(f"מחיר רכישה ממוצע – {assets[a][0]}", f"{sym}{avg:,.0f}",
                                f"{(now / avg - 1) * 100:+.1f}% (מחיר היום {sym}{now:,.0f})")
 if ccy == "ILS":
-    st.caption("בשקלים: סכום ההשקעה מומר לפי שער הדולר ביום כל קנייה והשווי הנקי לפי השער היום, "
-               "ולכן ההפסד כולל גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
+    st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
+               "ולכן הרווח הצף וההפסד הכולל כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
 with st.expander("ℹ️ מה המדדים אומרים?"):
     st.markdown("""
 - **סה״כ הושקע**: כל הכסף ששילמת על קניות מאז ההתחלה, כולל עמלות בורסה.
 - **מחיר רכישה ממוצע**: כמה שילמת בממוצע על יחידה אחת (למשל BTC אחד), כולל עמלות בורסה ומשוקלל לפי הכמות שקנית בכל עסקה. בשקלים לפי ממוצע השערים בימי הקנייה.
-- **רווח צף**: רווח או הפסד "על הנייר". שווי מה שיש לך היום פחות מה ששילמת עליו. הוא משתנה עם המחיר ומתממש רק כשמוכרים.
+- **רווח צף**: רווח או הפסד "על הנייר". שווי מה שיש לך היום פחות מה ששילמת עליו. הוא משתנה עם המחיר ומתממש רק כשמוכרים. בתצוגת שקלים: שווי היום בשקלים פחות עלות הקנייה בשקלים, כולל השפעת השער.
 - **רווח ממומש**: רווח או הפסד שנסגר במכירה בפועל. אם לא מכרת, הוא 0.
 - **עמלות רשת (on-chain)**: מה ששילמת לכורים בהעברות מהארנק שלך, לפי הבלוקצ'יין. בדרך כלל סכום זעיר.
 - **עמלות משיכה מהבורסות**: BTC שהבורסה ניכתה ממך כשמשכת לארנק. זו עמלת שירות של הבורסה, לא עמלת רשת, והיא יכולה להיות פרופורציונלית לסכום.
@@ -274,11 +289,13 @@ with t4:
     rows = []
     for a in ids:
         b, p = summ.by_asset[a], prices[a]
+        cost_c = float(positions[a].cost_basis) * afx[a]
+        unreal_c = float(b["value"]) * fx_now - cost_c
         held = p[vals[a] > 0] if (vals[a] > 0).any() else p
         rows.append({"נכס": assets[a][0], "סוג": assets[a][2], "כמות": float(b["qty"]),
-                     "עלות ממוצעת": float(b["avg_cost"]) * fx_now, "מחיר": float(b["price"]) * fx_now,
-                     "שווי": float(b["value"]) * fx_now, "רווח צף": float(b["unrealized"]) * fx_now,
-                     "רווח צף %": float(b["unrealized_pct"]), "רווח ממומש": float(b["realized"]) * fx_now,
+                     "עלות ממוצעת": float(b["avg_cost"]) * afx[a], "מחיר": float(b["price"]) * fx_now,
+                     "שווי": float(b["value"]) * fx_now, "רווח צף": unreal_c,
+                     "רווח צף %": unreal_c / cost_c * 100 if cost_c else 0.0, "רווח ממומש": float(b["realized"]) * fx_now,
                      "הכנסות": float(b["income"]) * fx_now,
                      "מרחק מ-ATH %": E.distance_from_ath(p) * 100, "Max DD %": E.max_drawdown(held) * 100})
     st.dataframe(pd.DataFrame(rows).style.format(precision=2), use_container_width=True, hide_index=True)
