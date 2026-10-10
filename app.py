@@ -145,6 +145,10 @@ summ = E.summarize(positions, {a: D(str(prices[a].iloc[-1])) for a in ids})
 real_tx = [t for t in tx_f if not t.notes.startswith("Network fee")]
 realized_sales = sum((p.realized_pnl for p in E.build_positions(real_tx).values()), D(0))
 net_fee_loss = summ.realized - realized_sales
+no_onchain = [t for t in tx_f if not t.notes.startswith("Network fee (on-chain)")]
+realized_no_onchain = sum((p.realized_pnl for p in E.build_positions(no_onchain).values()), D(0))
+onchain_loss = summ.realized - realized_no_onchain
+withdrawal_loss = net_fee_loss - onchain_loss
 
 inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far, at each purchase-date rate
 invested_now = float(inv_cum.iloc[-1])
@@ -158,10 +162,12 @@ k[0].metric("שווי נקי", money(nw_now))
 k[1].metric("סה״כ הושקע", money(invested_now), f"{'+' if pl >= 0 else '-'}{sym}{abs(pl):,.0f} רווח/הפסד כולל")
 k[2].metric("רווח צף (טרם נמכר)", money(float(summ.unrealized) * fx_now), f"{float(summ.unrealized_pct):+.1f}%")
 k[3].metric("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now))
-k2 = st.columns(3)
-k2[0].metric("עמלות רשת (BTC שירד)", money(float(net_fee_loss) * fx_now))
-k2[1].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
-k2[2].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+k2 = st.columns(2)
+k2[0].metric("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now))
+k2[1].metric("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now))
+k3 = st.columns(2)
+k3[0].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
+k3[1].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
 held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
 if held:
     inv_usd = float(contributions(tx_f, idx).sum())
@@ -182,7 +188,8 @@ with st.expander("ℹ️ מה המדדים אומרים?"):
 - **מחיר רכישה ממוצע**: כמה שילמת בממוצע על יחידה אחת (למשל BTC אחד), כולל עמלות בורסה ומשוקלל לפי הכמות שקנית בכל עסקה. בשקלים לפי ממוצע השערים בימי הקנייה.
 - **רווח צף**: רווח או הפסד "על הנייר". שווי מה שיש לך היום פחות מה ששילמת עליו. הוא משתנה עם המחיר ומתממש רק כשמוכרים.
 - **רווח ממומש**: רווח או הפסד שנסגר במכירה בפועל. אם לא מכרת, הוא 0.
-- **עמלות רשת**: BTC שירד מהכמות שלך בעמלות משיכה והעברה. זו לא מכירה, אבל זה הפסד אמיתי.
+- **עמלות רשת (on-chain)**: מה ששילמת לכורים בהעברות מהארנק שלך, לפי הבלוקצ'יין. בדרך כלל סכום זעיר.
+- **עמלות משיכה מהבורסות**: BTC שהבורסה ניכתה ממך כשמשכת לארנק. זו עמלת שירות של הבורסה, לא עמלת רשת, והיא יכולה להיות פרופורציונלית לסכום.
 - **TWR**: התשואה של ההשקעה עצמה, בלי קשר לכמה כסף הוספת ומתי. אם כל שקל שהושקע שווה היום 1% פחות, זה -1.0%. מתאים להשוואה מול SPY, QQQ ו-BTC.
 - **CAGR**: אותה תשואה מתורגמת לקצב שנתי ממוצע. אם עברו כשנה וחצי ו-TWR הוא -1.0%, ה-CAGR יהיה בערך -0.6% בשנה.
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
