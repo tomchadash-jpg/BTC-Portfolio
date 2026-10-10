@@ -49,9 +49,18 @@ def load_ledger():
 def history(ticker: str, start: str) -> pd.Series:
     if ticker == "CASH":
         return pd.Series(1.0, index=pd.date_range(start, datetime.now().date()))
-    h = yf.Ticker(ticker).history(start=start, auto_adjust=True)["Close"]
-    h.index = h.index.tz_localize(None).normalize()
-    return h[~h.index.duplicated()]
+    h = yf.Ticker(ticker).history(start=start, auto_adjust=True)
+    if h.empty:
+        return pd.Series(dtype=float)
+    s = h["Close"]
+    s.index = pd.DatetimeIndex(s.index).tz_localize(None).normalize()
+    return s[~s.index.duplicated()]
+
+
+def daily(s: pd.Series, idx) -> pd.Series:
+    if s.empty:
+        return pd.Series(float("nan"), index=idx)
+    return s.reindex(idx, method="ffill").bfill()
 
 
 def signed_qty(txs, aid, idx):
@@ -64,7 +73,19 @@ def signed_qty(txs, aid, idx):
         else pd.Series(0.0, index=idx)
 
 
-# ------------------------------ load & compute ------------------------------
+def contributions(txs, idx):
+    """Daily money put in (BUY cost incl. fee) minus money taken out (SELL proceeds), in USD."""
+    d = {}
+    for t in txs:
+        g, f = float(t.amount * t.price_per_unit), float(t.fee)
+        v = g + f if t.type == "BUY" else -(g - f) if t.type == "SELL" else 0.0
+        if v:
+            k = pd.Timestamp(t.timestamp).normalize().tz_localize(None)
+            d[k] = d.get(k, 0.0) + v
+    return pd.Series(d, dtype=float).reindex(idx).fillna(0.0)
+
+
+# ------------------------------ load ------------------------------
 (assets, txs), is_demo = load_ledger()
 if not txs:
     st.info("אין עסקאות עדיין. הוסף בעמוד add transaction בתפריט הצד")
@@ -75,11 +96,9 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 with st.sidebar:
     st.title("⚙️ הגדרות")
-    ccy = st.radio("מטבע בסיס", ["USD", "ILS"], horizontal=True)
-    rng = st.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], value="ALL")
     classes = sorted({a[2] for a in assets.values()})
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes)
-    bench = st.multiselect("מדדי ייחוס", ["SPY", "BTC-USD"], default=["SPY", "BTC-USD"])
+    bench = st.multiselect("מדדי ייחוס", ["SPY", "QQQ", "BTC-USD"], default=["SPY", "QQQ", "BTC-USD"])
     st.subheader("הקצאת יעד (%)")
     default_t = {"equity": 50, "crypto": 35, "cash": 15}
     targets = {c: st.slider(c, 0, 100, default_t.get(c, 0)) for c in classes}
@@ -88,13 +107,30 @@ with st.sidebar:
     if is_demo:
         st.info("מצב דמו – הגדר DATABASE_URL ו-USER_ID לנתונים אמיתיים")
 
-fx = history("ILS=X", start).reindex(idx, method="ffill").bfill() if ccy == "ILS" else pd.Series(1.0, index=idx)
+st.title("📈 Portfolio Tracker")
+c1, c2 = st.columns([1, 2])
+ccy = c1.radio("מטבע תצוגה", ["USD", "ILS"], horizontal=True)
+rng = c2.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], value="ALL")
+
+# ------------------------------ compute ------------------------------
+if ccy == "ILS":
+    fxs = history("ILS=X", start)
+    if fxs.empty:
+        st.warning("לא נמצא שער דולר-שקל. משתמש ב-3.0 בקירוב")
+        fx = pd.Series(3.0, index=idx)
+    else:
+        fx = daily(fxs, idx)
+else:
+    fx = pd.Series(1.0, index=idx)
 fx_now = float(fx.iloc[-1])
 sym = "₪" if ccy == "ILS" else "$"
 
 prices, vals = {}, {}
 for aid, (s, _, cls, api) in assets.items():
-    p = history(api, start).reindex(idx, method="ffill").bfill()
+    p = daily(history(api, start), idx)
+    if p.isna().all():
+        st.warning(f"אין מחירים עבור {s} ({api}). בדוק את ה-Ticker בטבלת הנכסים.")
+        p = p.fillna(0.0)
     prices[aid] = p
     vals[aid] = signed_qty(txs, aid, idx) * p
 
@@ -106,21 +142,28 @@ twr = E.twr_index(nw_usd, flows)
 positions = E.build_positions(tx_f)
 summ = E.summarize(positions, {a: D(str(prices[a].iloc[-1])) for a in ids})
 
+inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far, at each purchase-date rate
+invested_now = float(inv_cum.iloc[-1])
+nw_now = float(summ.net_worth) * fx_now
+
 # ------------------------------ UI ------------------------------
-st.title("📈 Portfolio Tracker")
-k = st.columns(5)
-k[0].metric("שווי נקי", f"{sym}{float(summ.net_worth) * fx_now:,.0f}")
-k[1].metric("רווח צף", f"{sym}{float(summ.unrealized) * fx_now:,.0f}", f"{float(summ.unrealized_pct):.1f}%")
-k[2].metric("רווח ממומש", f"{sym}{float(summ.realized) * fx_now:,.0f}")
-k[3].metric("TWR / CAGR", f"{(twr.iloc[-1] - 1) * 100:.1f}%", f"CAGR {E.cagr(twr) * 100:.1f}%")
-k[4].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+k = st.columns(6)
+k[0].metric("שווי נקי", f"{sym}{nw_now:,.0f}")
+k[1].metric("סה״כ הושקע", f"{sym}{invested_now:,.0f}", f"{sym}{nw_now - invested_now:+,.0f} רווח/הפסד")
+k[2].metric("רווח צף", f"{sym}{float(summ.unrealized) * fx_now:,.0f}", f"{float(summ.unrealized_pct):.1f}%")
+k[3].metric("רווח ממומש", f"{sym}{float(summ.realized) * fx_now:,.0f}")
+k[4].metric("TWR / CAGR", f"{(twr.iloc[-1] - 1) * 100:.1f}%", f"CAGR {E.cagr(twr) * 100:.1f}%")
+k[5].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+if ccy == "ILS":
+    st.caption("סכום ההשקעה מומר לפי שער הדולר ביום כל קנייה. השווי הנקי לפי השער הנוכחי. TWR והשוואה למדדים בדולרים.")
 
 t1, t2, t3, t4 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים"])
 
 with t1:
-    nw = E.slice_range(nw_usd * fx, rng)
-    f = px.area(nw, labels={"value": f"שווי ({ccy})", "index": ""})
-    f.update_layout(showlegend=False, height=420)
+    cmp_df = pd.DataFrame({"שווי": nw_usd * fx, "הושקע": inv_cum})
+    f = px.line(E.slice_range(cmp_df, rng), title=f"שווי מול סכום שהושקע ({ccy})",
+                labels={"value": f"({ccy})", "index": "", "variable": ""})
+    f.update_layout(height=420)
     st.plotly_chart(f, use_container_width=True)
     stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids})
     st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
@@ -129,7 +172,11 @@ with t2:
     sl = E.slice_range(twr, rng)
     fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="Portfolio (TWR)", line=dict(width=3)))
     for b in bench:
-        s = E.slice_range(history(b, start).reindex(idx, method="ffill").bfill(), rng)
+        h = history(b, start)
+        if h.empty:
+            st.warning(f"לא נמצאו מחירים עבור {b}")
+            continue
+        s = E.slice_range(daily(h, idx), rng)
         fig.add_trace(go.Scatter(x=s.index, y=E.rebased(s), name=b))
     fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
