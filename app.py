@@ -142,20 +142,39 @@ twr = E.twr_index(nw_usd, flows)
 positions = E.build_positions(tx_f)
 summ = E.summarize(positions, {a: D(str(prices[a].iloc[-1])) for a in ids})
 
+real_tx = [t for t in tx_f if not t.notes.startswith("Network fee")]
+realized_sales = sum((p.realized_pnl for p in E.build_positions(real_tx).values()), D(0))
+net_fee_loss = summ.realized - realized_sales
+
 inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far, at each purchase-date rate
 invested_now = float(inv_cum.iloc[-1])
 nw_now = float(summ.net_worth) * fx_now
 
 # ------------------------------ UI ------------------------------
-k = st.columns(6)
-k[0].metric("שווי נקי", f"{sym}{nw_now:,.0f}")
-k[1].metric("סה״כ הושקע", f"{sym}{invested_now:,.0f}", f"{sym}{nw_now - invested_now:+,.0f} רווח/הפסד")
-k[2].metric("רווח צף", f"{sym}{float(summ.unrealized) * fx_now:,.0f}", f"{float(summ.unrealized_pct):.1f}%")
-k[3].metric("רווח ממומש", f"{sym}{float(summ.realized) * fx_now:,.0f}")
-k[4].metric("TWR / CAGR", f"{(twr.iloc[-1] - 1) * 100:.1f}%", f"CAGR {E.cagr(twr) * 100:.1f}%")
-k[5].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+money = lambda v: f"{'-' if v < 0 else ''}{sym}{abs(v):,.0f}"
+pl = nw_now - invested_now
+k = st.columns(4)
+k[0].metric("שווי נקי", money(nw_now))
+k[1].metric("סה״כ הושקע", money(invested_now), f"{'+' if pl >= 0 else '-'}{sym}{abs(pl):,.0f} רווח/הפסד כולל")
+k[2].metric("רווח צף (טרם נמכר)", money(float(summ.unrealized) * fx_now), f"{float(summ.unrealized_pct):+.1f}%")
+k[3].metric("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now))
+k2 = st.columns(3)
+k2[0].metric("עמלות רשת (BTC שירד)", money(float(net_fee_loss) * fx_now))
+k2[1].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
+k2[2].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
 if ccy == "ILS":
-    st.caption("סכום ההשקעה מומר לפי שער הדולר ביום כל קנייה. השווי הנקי לפי השער הנוכחי. TWR והשוואה למדדים בדולרים.")
+    st.caption("בשקלים: סכום ההשקעה מומר לפי שער הדולר ביום כל קנייה והשווי הנקי לפי השער היום, "
+               "ולכן ההפסד כולל גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
+with st.expander("ℹ️ מה המדדים אומרים?"):
+    st.markdown("""
+- **סה״כ הושקע**: כל הכסף ששילמת על קניות מאז ההתחלה, כולל עמלות בורסה.
+- **רווח צף**: רווח או הפסד "על הנייר". שווי מה שיש לך היום פחות מה ששילמת עליו. הוא משתנה עם המחיר ומתממש רק כשמוכרים.
+- **רווח ממומש**: רווח או הפסד שנסגר במכירה בפועל. אם לא מכרת, הוא 0.
+- **עמלות רשת**: BTC שירד מהכמות שלך בעמלות משיכה והעברה. זו לא מכירה, אבל זה הפסד אמיתי.
+- **TWR**: התשואה של ההשקעה עצמה, בלי קשר לכמה כסף הוספת ומתי. אם כל שקל שהושקע שווה היום 1% פחות, זה -1.0%. מתאים להשוואה מול SPY, QQQ ו-BTC.
+- **CAGR**: אותה תשואה מתורגמת לקצב שנתי ממוצע. אם עברו כשנה וחצי ו-TWR הוא -1.0%, ה-CAGR יהיה בערך -0.6% בשנה.
+- **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
+""")
 
 t1, t2, t3, t4 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים"])
 
