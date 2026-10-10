@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import time as _t
+import urllib.error
 import urllib.request
 from datetime import datetime, time, timezone
 from decimal import Decimal as D
@@ -23,11 +25,32 @@ IL = ZoneInfo("Asia/Jerusalem")
 ADDR_RE = re.compile(r"(?:bc1[a-z0-9]{20,90}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})")
 
 
-@st.cache_data(ttl=120, show_spinner="בודק בבלוקצ'יין...")
+APIS = [API, "https://blockstream.info/api"]            # same Esplora format; the second is a fallback
+
+
+@st.cache_data(ttl=3600, show_spinner="בודק בבלוקצ'יין... (בפעם הראשונה זה יכול לקחת כחצי דקה)")
 def api(path: str):
-    req = urllib.request.Request(API + path, headers={"User-Agent": "portfolio-app"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.load(r)
+    last = None
+    for base in APIS:
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(base + path, headers={"User-Agent": "portfolio-app"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    data = json.load(r)
+                _t.sleep(0.4)                           # stay under the public rate limit
+                return data
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code == 429:
+                    _t.sleep(2 * (attempt + 1))         # rate limited: wait and retry
+                    continue
+                if e.code == 404:
+                    raise
+                break
+            except Exception as e:
+                last = e
+                break
+    raise last
 
 
 def address_txs(addr: str) -> list:
@@ -101,7 +124,9 @@ try:
         balance += (s["chain_stats"]["funded_txo_sum"] - s["chain_stats"]["spent_txo_sum"]
                     + s["mempool_stats"]["funded_txo_sum"] - s["mempool_stats"]["spent_txo_sum"])
 except Exception as e:
-    st.error(f"לא הצלחתי לקרוא מ-mempool.space: {e}")
+    st.error(f"לא הצלחתי לקרוא מהבלוקצ'יין: {e}")
+    st.caption("זו בדרך כלל הגבלת קצב זמנית. חכה דקה ולחץ על הכפתור. מה שכבר נטען נשמר, כך שכל ניסיון מתקדם.")
+    st.button("🔄 נסה שוב")
     st.stop()
 
 rows, new_fees = [], []
