@@ -8,9 +8,15 @@ from datetime import datetime, time, timezone
 from decimal import Decimal as D
 from zoneinfo import ZoneInfo
 
+import sys
+from pathlib import Path
+
 import pandas as pd
 import psycopg
 import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # so xpub.py in the repo root is found
+import xpub  # noqa: E402
 
 st.set_page_config(page_title="ארנק", page_icon="👛", layout="wide")
 
@@ -53,6 +59,24 @@ def api(path: str):
     raise last
 
 
+@st.cache_data(ttl=3600, show_spinner="מגלה את כתובות הארנק... (בפעם הראשונה זה לוקח כדקה)")
+def discover(key_text: str, gap: int = 10) -> list:
+    key = xpub.parse_key(key_text)
+    found = []
+    for branch in (0, 1):                              # 0 = receiving addresses, 1 = change addresses
+        idx = misses = 0
+        while misses < gap:
+            a = xpub.address(key, branch, idx)
+            s = api(f"/address/{a}")
+            if s["chain_stats"]["tx_count"] + s["mempool_stats"]["tx_count"] > 0:
+                found.append(a)
+                misses = 0
+            else:
+                misses += 1
+            idx += 1
+    return found
+
+
 def address_txs(addr: str) -> list:
     out = api(f"/address/{addr}/txs")
     last = [t for t in out if t["status"]["confirmed"]]
@@ -83,9 +107,20 @@ st.caption("קריאה בלבד מ-mempool.space. לא נדרשים מפתחות
 
 known_txids, ledger_qty = ledger()
 
-# --- which addresses are yours: inputs of the on-chain txs already in the ledger + extra addresses you add ---
+# --- which addresses are yours ---
+# With WALLET_XPUB in Secrets: every address of the wallet, derived from the public key (watch-only).
+# Without it: inputs of the on-chain txs already in the ledger + extra addresses you add.
+XPUB = os.getenv("WALLET_XPUB", "").strip()
 own, suggestions = set(), set()
-for t in known_txids:
+if XPUB:
+    try:
+        own = set(discover(XPUB))
+        st.caption(f"🔑 נמצאו {len(own)} כתובות פעילות בארנק (מגולה אוטומטית מהמפתח הציבורי)")
+    except Exception as e:
+        st.error(f"WALLET_XPUB לא תקין או שהבלוקצ'יין לא זמין: {e}")
+        st.button("🔄 נסה שוב")
+        st.stop()
+for t in ([] if XPUB else known_txids):
     try:
         tx = api(f"/tx/{t}")
         own |= {v["prevout"]["scriptpubkey_address"] for v in tx["vin"] if v.get("prevout")}
@@ -94,7 +129,7 @@ for t in known_txids:
 extra_text = os.getenv("WALLET_ADDRESSES", "") + " " + st.text_area(
     "כתובות נוספות שלך (אופציונלי, לשימוש חד-פעמי; לקבע הוסף ל-Secrets כ-WALLET_ADDRESSES)", "")
 own |= set(ADDR_RE.findall(extra_text))
-for t in known_txids:
+for t in ([] if XPUB else known_txids):
     try:
         tx, outs = api(f"/tx/{t}"), api(f"/tx/{t}/outspends")
         for o, sp in zip(tx["vout"], outs):
