@@ -61,19 +61,19 @@ def api(path: str):
 
 @st.cache_data(ttl=3600, show_spinner="מגלה את כתובות הארנק... (בפעם הראשונה זה לוקח כדקה)")
 def discover(key_text: str, gap: int = 10) -> list:
-    key = xpub.parse_key(key_text)
     found = []
-    for branch in (0, 1):                              # 0 = receiving addresses, 1 = change addresses
-        idx = misses = 0
-        while misses < gap:
-            a = xpub.address(key, branch, idx)
-            s = api(f"/address/{a}")
-            if s["chain_stats"]["tx_count"] + s["mempool_stats"]["tx_count"] > 0:
-                found.append(a)
-                misses = 0
-            else:
-                misses += 1
-            idx += 1
+    for key in xpub.parse_keys(key_text):              # one key per wallet; several wallets are fine
+        for branch in (0, 1):                          # 0 = receiving addresses, 1 = change addresses
+            idx = misses = 0
+            while misses < gap:
+                a = xpub.address(key, branch, idx)
+                s = api(f"/address/{a}")
+                if s["chain_stats"]["tx_count"] + s["mempool_stats"]["tx_count"] > 0:
+                    found.append(a)
+                    misses = 0
+                else:
+                    misses += 1
+                idx += 1
     return found
 
 
