@@ -100,6 +100,13 @@ def _bech32_addr(prog, hrp="bc"):
     return hrp + "1" + "".join(_B32[d] for d in data + [(pm >> 5 * (5 - i)) & 31 for i in range(6)])
 
 
+def parse_keys(text):
+    """All keys in the text (one per wallet), each as (pubkey point, chain code)."""
+    found = re.findall(r"[xyz]pub[1-9A-HJ-NP-Za-km-z]{100,112}", text)
+    if not found: raise ValueError("לא נמצא xpub/zpub")
+    return [parse_key(f) for f in dict.fromkeys(found)]
+
+
 def parse_key(text):
     """Returns (pubkey point, chain code) from an xpub/zpub or a descriptor that contains one."""
     m = re.search(r"[xyz]pub[1-9A-HJ-NP-Za-km-z]{100,112}", text)
