@@ -2,8 +2,11 @@
 Env (optional): DATABASE_URL (Postgres/Supabase), USER_ID. Without them the app runs on demo data.
 `assets.api_id` is treated as a Yahoo Finance ticker (e.g. SPY, BTC-USD, ETH-USD); 'CASH' = price 1.
 """
+import json
 import os
+import urllib.request
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal as D
 
 import pandas as pd
@@ -45,7 +48,7 @@ def load_ledger():
     return ({x[0]: x[1:] for x in a}, [E.Tx(*x) for x in r]), False
 
 
-@st.cache_data(ttl=3600, show_spinner="מושך מחירים...")
+@st.cache_data(ttl=300, show_spinner="מושך מחירים...")
 def history(ticker: str, start: str) -> pd.Series:
     if ticker == "CASH":
         return pd.Series(1.0, index=pd.date_range(start, datetime.now().date()))
@@ -55,6 +58,28 @@ def history(ticker: str, start: str) -> pd.Series:
     s = h["Close"]
     s.index = pd.DatetimeIndex(s.index).tz_localize(None).normalize()
     return s[~s.index.duplicated()]
+
+
+CG = {"BTC": "bitcoin", "ETH": "ethereum"}   # asset symbol -> CoinGecko id
+
+
+@st.cache_data(ttl=60)
+def live_prices(ids: tuple) -> dict:
+    """Near-real-time USD prices from CoinGecko (free, no key). Returns {} on any failure."""
+    if not ids:
+        return {}
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=" + ",".join(ids)
+        req = urllib.request.Request(url, headers={"User-Agent": "portfolio-app"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return {k: float(v["usd"]) for k, v in json.load(r).items()}
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=300)
+def loaded_at():
+    return datetime.now(ZoneInfo("Asia/Jerusalem"))
 
 
 def daily(s: pd.Series, idx) -> pd.Series:
@@ -108,9 +133,12 @@ with st.sidebar:
         st.info("מצב דמו – הגדר DATABASE_URL ו-USER_ID לנתונים אמיתיים")
 
 st.title("📈 Portfolio Tracker")
-c1, c2 = st.columns([1, 2])
+c1, c2, c3 = st.columns([2, 3, 2])
 ccy = c1.radio("מטבע תצוגה", ["USD", "ILS"], horizontal=True)
 rng = c2.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], value="ALL")
+if c3.button("🔄 רענן מחירים"):
+    st.cache_data.clear()
+    st.rerun()
 
 # ------------------------------ compute ------------------------------
 if ccy == "ILS":
@@ -125,12 +153,15 @@ else:
 fx_now = float(fx.iloc[-1])
 sym = "₪" if ccy == "ILS" else "$"
 
+live = live_prices(tuple(sorted({CG[a[0]] for a in assets.values() if a[0] in CG})))
 prices, vals = {}, {}
 for aid, (s, _, cls, api) in assets.items():
     p = daily(history(api, start), idx)
     if p.isna().all():
         st.warning(f"אין מחירים עבור {s} ({api}). בדוק את ה-Ticker בטבלת הנכסים.")
         p = p.fillna(0.0)
+    if CG.get(s) in live:
+        p.iloc[-1] = live[CG[s]]          # live price for today
     prices[aid] = p
     vals[aid] = signed_qty(txs, aid, idx) * p
 
@@ -155,6 +186,9 @@ invested_now = float(inv_cum.iloc[-1])
 nw_now = float(summ.net_worth) * fx_now
 
 # ------------------------------ UI ------------------------------
+live_txt = " · ".join(f"{s} ${live[CG[s]]:,.0f}" for s in (a[0] for a in assets.values()) if CG.get(s) in live)
+st.caption(f"עודכן {loaded_at():%H:%M}" + (f" · מחיר חי (CoinGecko): {live_txt}" if live_txt else "")
+           + " · שאר המחירים מ-Yahoo עם עיכוב של כמה דקות")
 money = lambda v: f"{'-' if v < 0 else ''}{sym}{abs(v):,.0f}"
 pl = nw_now - invested_now
 k = st.columns(4)
