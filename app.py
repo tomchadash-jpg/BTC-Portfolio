@@ -162,12 +162,24 @@ k2 = st.columns(3)
 k2[0].metric("עמלות רשת (BTC שירד)", money(float(net_fee_loss) * fx_now))
 k2[1].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
 k2[2].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
+if held:
+    inv_usd = float(contributions(tx_f, idx).sum())
+    avg_fx = invested_now / inv_usd if inv_usd else 1.0      # weighted-average FX of the purchases
+    kc = st.columns(min(len(held), 3))
+    for i, a in enumerate(held):
+        b = summ.by_asset[a]
+        avg = float(b["avg_cost"]) * avg_fx
+        now = float(b["price"]) * fx_now
+        kc[i % len(kc)].metric(f"מחיר רכישה ממוצע – {assets[a][0]}", f"{sym}{avg:,.0f}",
+                               f"{(now / avg - 1) * 100:+.1f}% (מחיר היום {sym}{now:,.0f})")
 if ccy == "ILS":
     st.caption("בשקלים: סכום ההשקעה מומר לפי שער הדולר ביום כל קנייה והשווי הנקי לפי השער היום, "
                "ולכן ההפסד כולל גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
 with st.expander("ℹ️ מה המדדים אומרים?"):
     st.markdown("""
 - **סה״כ הושקע**: כל הכסף ששילמת על קניות מאז ההתחלה, כולל עמלות בורסה.
+- **מחיר רכישה ממוצע**: כמה שילמת בממוצע על יחידה אחת (למשל BTC אחד), כולל עמלות בורסה ומשוקלל לפי הכמות שקנית בכל עסקה. בשקלים לפי ממוצע השערים בימי הקנייה.
 - **רווח צף**: רווח או הפסד "על הנייר". שווי מה שיש לך היום פחות מה ששילמת עליו. הוא משתנה עם המחיר ומתממש רק כשמוכרים.
 - **רווח ממומש**: רווח או הפסד שנסגר במכירה בפועל. אם לא מכרת, הוא 0.
 - **עמלות רשת**: BTC שירד מהכמות שלך בעמלות משיכה והעברה. זו לא מכירה, אבל זה הפסד אמיתי.
