@@ -19,8 +19,14 @@
     html, body { margin:0; height:100%; background:var(--app-bg); color:var(--fg);
            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
     /* Full-screen app, kept clear of the clock / home indicator */
-    #app { position:fixed; inset:0; padding-top:env(safe-area-inset-top); background:var(--app-bg); display:none; }
-    #app iframe { width:100%; height:100%; border:0; display:block; background:var(--app-bg); }
+    #app { position:fixed; inset:0; top:env(safe-area-inset-top); background:var(--app-bg); display:none; overflow:hidden; }
+    /* Streamlit Cloud draws a white rounded frame and a "Built with Streamlit" bar around embeds.
+       Make the iframe slightly bigger than the screen so both fall outside the visible area. */
+    #app iframe { position:absolute; border:0; display:block; background:var(--app-bg);
+                  top:calc(-1 * var(--crop)); left:calc(-1 * var(--crop));
+                  width:calc(100% + 2 * var(--crop));
+                  height:calc(100% + var(--crop) + var(--footer)); }
+    :root { --crop:14px; --footer:40px; }
     #setup { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px 16px; text-align:center;
              background:linear-gradient(#16203A,#0A0F1E); }
     main { max-width:420px; width:100%; }
