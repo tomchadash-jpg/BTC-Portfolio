@@ -20,7 +20,9 @@ def top(overlap: bool = False):
     key = "topmenu_overlap" if overlap else "topmenu"
     css = (f".st-key-{key} {{ display: flex; align-items: flex-start; direction: rtl; position: relative; z-index: 5;"
            f"{' margin-bottom: -3.4rem;' if overlap else ''} }}"
-           f".st-key-{key} button {{ font-size: 1.35rem; padding: .1rem .7rem; }}")
+           f".st-key-{key} [data-testid='stPopover'] {{ width: fit-content !important; margin-left: auto !important;"
+           f" margin-right: 0 !important; }}"
+           f".st-key-{key} button {{ font-size: 1.35rem; padding: .1rem .7rem; width: auto !important; }}")
     (st.html if hasattr(st, "html") else lambda c: st.markdown(c, unsafe_allow_html=True))(f"<style>{css}</style>")
     with st.container(key=key):
         pop = st.popover("☰")

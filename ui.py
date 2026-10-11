@@ -14,6 +14,15 @@ _CSS = """
 .stApp h1, .stApp h2, .stApp h3 { font-weight: 700; letter-spacing: -.01em; }
 .stApp [data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; font-weight: 500; }
 
+/* ☰ menu panel (rendered outside the page, so it needs its own rules):
+   right-to-left, a fixed width instead of the whole screen, and anchored to the right edge */
+[data-testid="stPopoverBody"] { direction: rtl !important; text-align: right !important;
+    width: min(300px, 82vw) !important; min-width: 0 !important; max-width: 82vw !important; }
+[data-testid="stPopoverBody"] * { text-align: right; }
+[data-testid="stPopoverBody"] [data-baseweb="slider"] { direction: ltr; }
+div[data-baseweb="popover"]:has([data-testid="stPopoverBody"]) {
+    inset: 3.6rem .5rem auto auto !important; transform: none !important; }
+
 /* Insight cards */
 .ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }
 .ins-card { background: rgba(128,128,128,.09); border-radius: .8rem; padding: .7rem .8rem;
