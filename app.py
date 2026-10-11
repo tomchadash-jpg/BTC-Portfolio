@@ -17,6 +17,7 @@ import yfinance as yf
 
 import accounts as A
 import engine as E
+import insights as I
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
 
@@ -344,7 +345,7 @@ with st.expander("ℹ️ מה המדדים אומרים?"):
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
 """)
 
-t1, t2, t3, t4 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים"])
+t1, t2, t3, t4, t5 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות"])
 
 with t1:
     cmp_df = pd.DataFrame({"שווי": nw_usd * fx, "הושקע": inv_cum})
@@ -438,6 +439,101 @@ with t4:
                      "הכנסות": float(b["income"]) * fx_now,
                      "מרחק מ-ATH %": E.distance_from_ath(p) * 100, "Max DD %": E.max_drawdown(held) * 100})
     st.dataframe(pd.DataFrame(rows).style.format(precision=2), use_container_width=True, hide_index=True)
+
+with t5:
+    usd = lambda v: money(v * fx_now)                     # analyses run in USD; shown in the display currency
+    pct = lambda v: f"{v:+.1f}%"
+    st.caption("ניתוח של ההחלטות עד היום, לפי התיקים שבחרת למעלה. זה תיאור של מה שקרה, לא המלצה.")
+
+    # 1. what worked
+    pa = I.per_asset_pnl(tx_f, assets, prices)
+    if not pa.empty:
+        st.subheader("מה עבד ומה לא")
+        best, worst = pa.iloc[0], pa.iloc[-1]
+        lines = [f"**הכי טוב: {best.asset}** – {usd(best.pnl)} ({pct(best.pct)}) על השקעה של {usd(best.paid)}."]
+        if len(pa) > 1:
+            lines.append(f"**הכי חלש: {worst.asset}** – {usd(worst.pnl)} ({pct(worst.pct)}) על השקעה של {usd(worst.paid)}.")
+        losers = pa[pa.pnl < 0]
+        if len(losers) and pa.pnl.sum() < 0:
+            share = losers.pnl.min() / losers.pnl.sum() * 100
+            lines.append(f"{worst.asset} לבד אחראי ל-{share:.0f}% מכל ההפסדים.")
+        wins = (pa.pnl > 0).sum()
+        lines.append(f"{wins} מתוך {len(pa)} הנכסים שקנית ברווח כרגע (כולל מה שנמכר).")
+        st.markdown("\n".join(f"- {x}" for x in lines))
+        fig = go.Figure(go.Bar(x=pa.pnl * fx_now, y=pa.asset, orientation="h",
+                               marker_color=["#2e9e5b" if v >= 0 else "#d9534f" for v in pa.pnl],
+                               hovertemplate="%{y}: " + sym + "%{x:,.0f}<extra></extra>"))
+        fig.update_layout(height=60 + 34 * len(pa), margin=dict(l=10, r=10, t=10, b=10),
+                          yaxis=dict(autorange="reversed"), xaxis_title=f"רווח/הפסד כולל ({sym})")
+        st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
+
+    # 2. all in bitcoin
+    btc_px = daily(history("BTC-USD", start), idx)
+    non_btc = [t for t in tx_f if t.type in ("BUY", "SELL") and assets[t.asset_id][0] != "BTC"]
+    if non_btc and not btc_px.isna().any():
+        st.subheader("אילו הכול היה בביטקוין")
+        alt = I.all_in_btc(tx_f, btc_px)
+        actual = float(sum(vals[a].iloc[-1] for a in ids) + cash_usd.iloc[-1])
+        gap = actual - alt["value"]
+        st.markdown(f"אותם סכומים, באותם תאריכים, אבל כל קנייה הייתה ב-BTC וכל מכירה מוציאה מ-BTC את אותו סכום: "
+                    f"היום זה היה שווה **{usd(alt['value'])}** (כ-{alt['btc_qty']:.4f} BTC), מול **{usd(actual)}** בפועל – "
+                    f"{'יותר ב-' if gap >= 0 else 'פחות ב-'}**{usd(abs(gap))}**.")
+        if gap < 0:
+            st.caption("כלומר, החשיפה לביטקוין דרך מניות וקרנות עלתה לך יותר מאשר להחזיק ביטקוין עצמו.")
+
+    # 3. sells
+    sv = I.sells_vs_holding(tx_f, assets, prices)
+    if not sv.empty:
+        st.subheader("המכירות שלך מול להמשיך להחזיק")
+        tot = sv.saved.sum()
+        st.markdown(f"קיבלת {usd(sv.got.sum())} ממכירות. אותן יחידות היו שוות היום {usd(sv.if_held.sum())} – "
+                    f"המכירות {'חסכו לך' if tot >= 0 else 'עלו לך'} **{usd(abs(tot))}**.")
+        b = sv.loc[sv.saved.idxmax()]
+        w = sv.loc[sv.saved.idxmin()]
+        st.markdown(f"- המכירה הכי טובה: {b.asset} ב-{b.date:%d/%m/%Y} ({usd(b.saved)} מול החזקה)\n"
+                    f"- המכירה הכי פחות טובה: {w.asset} ב-{w.date:%d/%m/%Y} ({usd(w.saved)} מול החזקה)")
+
+    # 4. rotations
+    rt = I.rotations(tx_f, assets, prices)
+    if not rt.empty:
+        st.subheader("החלפות בין נכסים")
+        st.caption("מכרת נכס וקנית אחר באותו תיק תוך שבועיים: מה עשה כל אחד מאז ההחלפה.")
+        st.dataframe(pd.DataFrame({"מתאריך": rt.date, "מכרת": rt.sold, "קנית": rt.bought,
+                                   "סכום": rt.amount * fx_now, "מה שמכרת %": rt.sold_ret,
+                                   "מה שקנית %": rt.bought_ret, "תוצאה": rt.edge * fx_now})
+                     .style.format({"סכום": "{:,.0f}", "מה שמכרת %": "{:+.1f}", "מה שקנית %": "{:+.1f}",
+                                    "תוצאה": "{:+,.0f}"}), use_container_width=True, hide_index=True)
+        e = rt.edge.sum()
+        st.markdown(f"בסך הכול ההחלפות {'הרוויחו' if e >= 0 else 'הפסידו'} **{usd(abs(e))}** "
+                    f"לעומת השארת הכסף בנכס שנמכר.")
+
+    # 5. fees
+    fs = I.fee_summary(tx_f)
+    if fs["paid"]:
+        st.subheader("עמלות")
+        total_fees = fs["trade"] + fs["account"]
+        st.markdown(f"שילמת {usd(total_fees)} עמלות – {total_fees / fs['paid'] * 100:.2f}% מכל הקניות: "
+                    f"{usd(fs['trade'])} על {fs['trades']} פעולות מסחר"
+                    + (f" ו-{usd(fs['account'])} דמי ניהול וטיפול." if fs["account"] else "."))
+        vba = {}
+        for a in chosen:
+            at = acct_txs[a]
+            vba[a] = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) \
+                + float(cash_model(at, idx)[1].iloc[-1])
+        dr = I.account_fee_drag(tx_f, vba)
+        for r in dr.itertuples():
+            st.markdown(f"- {r.account}: {usd(r.fees_12m)} דמי ניהול וטיפול ב-12 החודשים האחרונים = "
+                        f"**{r.pct:.2f}% בשנה** מהשווי הנוכחי"
+                        + (" – משמעותי ביחס לגודל החשבון." if r.pct >= 0.5 else "."))
+
+    # 6. concentration
+    cv = {assets[a][0]: float(vals[a].iloc[-1]) for a in ids}
+    cc = I.concentration(cv)
+    if cc:
+        st.subheader("ריכוזיות")
+        st.markdown(f"- הנכס הגדול ביותר: **{cc['top']}** – {cc['top_pct']:.0f}% מהתיק.\n"
+                    f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
+                    f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
 
 with st.expander("📒 ספר עסקאות"):
     st.dataframe(pd.DataFrame([{**t.__dict__, "asset": assets[t.asset_id][0]} for t in tx_f]),
