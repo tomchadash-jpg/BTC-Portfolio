@@ -612,6 +612,67 @@ with t5:
         st.markdown(f"בסך הכול ההחלפות {'הרוויחו' if e >= 0 else 'הפסידו'} **{usd(abs(e))}** "
                     f"לעומת השארת הכסף בנכס שנמכר.")
 
+    # ---------- lessons: patterns in your own data, phrased as rules to consider ----------
+    lessons = []          # (icon, key number, rule, evidence, tone)
+    for name, df in (("ביטקוין", btc_b), ("מניות", stk_b)):
+        if df.empty:
+            continue
+        up, down = df.before_30 > 10, df.before_30 < -10
+        u90, d90 = I.wavg(df[up], "after_90"), I.wavg(df[down], "after_90")
+        if u90 is not None and d90 is not None and abs(d90 - u90) >= 5:
+            if d90 > u90:
+                lessons.append(("📉", pct(d90 - u90), f"{name}: ירידות היו הזדמנות",
+                                f"קניות אחרי ירידה של 10%+ הניבו {pct(d90)} ב-90 יום, מול {pct(u90)} אחרי עליות. "
+                                f"כלל לשקול: לשמור חלק מהתקציב לימים של ירידה חדה.", "good"))
+            else:
+                lessons.append(("🚀", pct(u90 - d90), f"{name}: המומנטום עבד לך",
+                                f"קניות אחרי עלייה הניבו {pct(u90)} ב-90 יום, מול {pct(d90)} אחרי ירידות – "
+                                f"אצלך 'לתפוס סכין נופלת' עבד פחות טוב.", None))
+        rp = I.wavg(df, "range_pct")
+        if rp is not None and rp > 60:
+            lessons.append(("🧊", f"{rp:.0f}%", f"{name}: לא למהר לקנות",
+                            "רוב הכסף נקנה קרוב לשיאים המקומיים של החודש. פיצול כל קנייה ל-3–4 חלקים "
+                            "על פני כמה שבועות היה מוריד את המחיר הממוצע.", "bad"))
+    if not btc_b.empty and ap:
+        if ap["diff_pct"] > 1:
+            lessons.append(("🤖", pct(ap["diff_pct"]), "ביטקוין: קנייה קבועה הייתה זולה יותר",
+                            "קנייה יומית או שבועית באותו סכום הייתה נותנת מחיר ממוצע נמוך יותר מהתזמון הידני. "
+                            "כלל לשקול: להפוך חלק מהקניות להוראה קבועה.", "bad"))
+        elif ap["diff_pct"] < -1:
+            lessons.append(("🎯", pct(ap["diff_pct"]), "ביטקוין: התזמון שלך עובד",
+                            f"המחיר הממוצע שלך נמוך ב-{abs(ap['diff_pct']):.1f}% מקנייה יומית קבועה. "
+                            "מה שעשית עד עכשיו – לקנות יותר כשהמחיר יורד – הוכיח את עצמו.", "good"))
+    if not sells_t.empty:
+        a90 = I.wavg(sells_t, "after_90")
+        if a90 is not None and a90 > 5:
+            lessons.append(("🔭", pct(a90), "מניות: מכרת מוקדם מדי",
+                            "90 יום אחרי המכירות המחיר היה גבוה יותר. כלל לשקול: לפני מכירה, להגדיר מראש "
+                            "מחיר או סיבה למכירה, ולא למכור מתוך תגובה לתנודה.", "bad"))
+        drop = sells_t[sells_t.before_30 < -15]
+        v = I.wavg(drop, "after_30") if len(drop) else None
+        if v is not None and v > 0:
+            lessons.append(("😬", pct(v), "מניות: לא למכור בפאניקה",
+                            f"{len(drop)} מכירות היו אחרי ירידה חדה, ובחודש שאחריהן המחיר התאושש. "
+                            "כלל לשקול: לחכות כמה ימים אחרי ירידה חדה לפני החלטה על מכירה.", "bad"))
+    if not rt.empty:
+        wins, n = int((rt.edge > 0).sum()), len(rt)
+        e = rt.edge.sum()
+        if e < 0:
+            lessons.append(("🔁", usd(e).replace("\\$", "&#36;"), "מניות: פחות החלפות",
+                            f"ההחלפות בין נכסים עבדו ב-{wins} מתוך {n} פעמים, ובסך הכול עלו לך כסף. "
+                            "כל החלפה היא הימור שהנכס החדש יעשה יותר טוב – כלל לשקול: להחליף רק עם סיבה ברורה.",
+                            "bad"))
+    cv_now = {assets[a][0]: float(vals[a].iloc[-1]) for a in ids}
+    cc = I.concentration(cv_now)
+    if cc and cc["btc_linked_pct"] > 80 and len([v for v in cv_now.values() if v > 0]) > 1:
+        lessons.append(("🧲", f"{cc['btc_linked_pct']:.0f}%", "הפיזור כאן הוא בעיקר שמות",
+                        "כמעט כל התיק נע עם מחיר הביטקוין, גם המניות והקרנות. אם המטרה היא פיזור סיכון, "
+                        "הוא יגיע רק מנכסים שלא קשורים לביטקוין.", None))
+    if lessons:
+        st.subheader("🧭 מסקנות להמשך")
+        st.caption("דפוסים שעולים מהעסקאות שלך, ניסוחים של כללים לשקול – לא המלצת השקעה.")
+        cards(lessons)
+
     with st.expander("סיכום כללי"):
         usd = lambda v: money(v * fx_now).replace("$", "\\$")                   # analyses run in USD; shown in the display currency
         pct = lambda v: f"{v:+.1f}%"
