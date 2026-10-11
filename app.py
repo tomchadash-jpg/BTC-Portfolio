@@ -193,6 +193,19 @@ if c3.button("🔄 רענן מחירים"):
     st.rerun()
 
 # Plotly toolbar: zoom, pan, reset stay available; tapping the chart shows the values (hovermode "x unified")
+if not hasattr(st, "_orig_plotly_chart"):      # keep the original once; this script re-runs on every tap
+    st._orig_plotly_chart = st.plotly_chart
+_plotly_chart = st._orig_plotly_chart
+
+
+def _centered_chart(fig, *args, **kwargs):
+    """All chart titles centered."""
+    fig.update_layout(title_x=0.5, title_xanchor="center")
+    return _plotly_chart(fig, *args, **kwargs)
+
+
+st.plotly_chart = _centered_chart
+
 CHART_CFG = {"displayModeBar": True, "displaylogo": False, "doubleClick": "reset",
              "modeBarButtonsToRemove": ["select2d", "lasso2d", "toImage"]}
 
