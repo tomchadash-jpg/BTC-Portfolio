@@ -20,8 +20,8 @@ _CSS = """
     width: min(300px, 82vw) !important; min-width: 0 !important; max-width: 82vw !important; }
 [data-testid="stPopoverBody"] * { text-align: right; }
 [data-testid="stPopoverBody"] [data-baseweb="slider"] { direction: ltr; }
-div[data-baseweb="popover"]:has([data-testid="stPopoverBody"]) {
-    inset: 3.6rem .5rem auto auto !important; transform: none !important; }
+[data-testid="stPopoverBody"] { position: fixed !important; inset: 3.6rem .5rem auto auto !important;
+    transform: none !important; max-height: 80vh; overflow-y: auto; }
 
 /* Insight cards */
 .ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }
