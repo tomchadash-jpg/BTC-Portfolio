@@ -9,6 +9,9 @@ import yfinance as yf
 
 st.set_page_config(page_title="עמלות", page_icon="💸", layout="wide")
 
+import gate
+gate.require_login()  # nothing below runs without the password
+
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 URL, UID = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
 if not (URL and UID):

@@ -12,54 +12,70 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="My Portfolio">
-  <meta name="theme-color" content="#0A0F1E">
+  <meta name="theme-color" content="#0E1117">
   <style>
-    :root { --fg:#E5E7EB; --muted:#94A3B8; --accent:#F7931A; }
+    :root { --fg:#E5E7EB; --muted:#94A3B8; --accent:#F7931A; --app-bg:#0E1117; }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:linear-gradient(#16203A,#0A0F1E); color:var(--fg);
-           font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
-           display:flex; align-items:center; justify-content:center; padding:24px 16px; text-align:center; }
+    html, body { margin:0; height:100%; background:var(--app-bg); color:var(--fg);
+           font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    /* Full-screen app, kept clear of the clock / home indicator */
+    #app { position:fixed; inset:0; padding-top:env(safe-area-inset-top); background:var(--app-bg); display:none; }
+    #app iframe { width:100%; height:100%; border:0; display:block; background:var(--app-bg); }
+    #setup { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px 16px; text-align:center;
+             background:linear-gradient(#16203A,#0A0F1E); }
     main { max-width:420px; width:100%; }
     img { width:120px; height:120px; border-radius:27px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
     h1 { font-size:24px; margin:20px 0 8px; }
     p { color:var(--muted); line-height:1.6; margin:0 0 20px; }
-    .btn { display:inline-block; background:var(--accent); color:#111; font-weight:700; text-decoration:none;
-           padding:14px 28px; border-radius:14px; border:0; font-size:17px; }
-    .link { color:var(--muted); display:inline-block; margin-top:14px; }
     ol { text-align:right; color:var(--muted); line-height:1.9; padding-inline-start:20px; margin:24px 0 0; }
-    section { display:none; }
-    body[data-view="setup"] #setup, body[data-view="ready"] #ready, body[data-view="launch"] #launch { display:block; }
+    body.running #setup { display:none; }
+    body.running #app { display:block; }
   </style>
 </head>
-<body data-view="setup">
-<main>
-  <img src="icon-512.png" alt="">
-
-  <section id="launch"><h1>פותח את התיק…</h1></section>
-
-  <section id="setup">
+<body>
+<div id="setup">
+  <main>
+    <img src="icon-512.png" alt="">
     <h1>My Portfolio</h1>
     <p>להוספה למסך הבית עם הלוגו הזה:</p>
-    <a class="btn" id="open" href="#">פתח את האפליקציה</a>
     <ol>
       <li>הקש על ••• ואז על שיתוף ⬆️</li>
       <li>בחר "הוסף למסך הבית"</li>
       <li>השאר <b>דלוק</b> את "פתח כאפליקציה רשת"</li>
       <li>הקש "הוסף"</li>
     </ol>
-  </section>
-
-</main>
+  </main>
+</div>
+<div id="app"></div>
 <script>
   const APP_URL = "https://btc-portfolio-jguv8kcdauchggtvou2z9w.streamlit.app";
-  document.getElementById("open").href = APP_URL;
+  const KEY = "portfolio-key";
+
+  function get() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
+  function set(v) { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch (e) {} }
+
+  // The app's lock screen tells us when to remember / forget the password.
+  window.addEventListener("message", function (e) {
+    const fromApp = e.origin === "null" || /\.streamlit\.app$/.test(e.origin);
+    if (!fromApp || !e.data || typeof e.data !== "object") return;
+    if (e.data.type === "portfolio-key" && typeof e.data.key === "string") set(e.data.key);
+    if (e.data.type === "portfolio-bad-key") set("");
+  });
 
   const standalone = window.navigator.standalone === true ||
                      window.matchMedia("(display-mode: standalone)").matches;
-  // Opened from the home-screen icon (or an old ?go=1 bookmark) → straight to the app.
   if (standalone || new URLSearchParams(location.search).has("go")) {
-    document.body.dataset.view = "launch";
-    location.replace(APP_URL);
+    const src = new URL(APP_URL);
+    src.searchParams.set("embed", "true");
+    src.searchParams.set("embed_options", "dark_theme");
+    const k = get();
+    if (k) src.searchParams.set("key", k);
+    const f = document.createElement("iframe");
+    f.src = src.toString();
+    f.title = "My Portfolio";
+    f.allow = "clipboard-write";
+    document.getElementById("app").appendChild(f);
+    document.body.classList.add("running");
   }
 </script>
 </body>

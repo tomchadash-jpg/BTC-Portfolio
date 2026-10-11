@@ -19,6 +19,9 @@ import engine as E
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
 
+import gate
+gate.require_login()  # nothing below runs without the password
+
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 
 

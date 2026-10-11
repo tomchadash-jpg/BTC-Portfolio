@@ -7,14 +7,13 @@ import streamlit as st
 
 st.set_page_config(page_title="הוסף עסקה", page_icon="➕")
 
+import gate
+gate.require_login()  # nothing below runs without the password
+
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 URL, UID = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
 if not (URL and UID):
     st.error("חסרים DATABASE_URL / USER_ID ב-Secrets")
-    st.stop()
-
-pw = os.getenv("APP_PASSWORD")
-if pw and st.text_input("סיסמה", type="password") != pw:
     st.stop()
 
 
