@@ -178,8 +178,7 @@ he = lambda c: CLS_HE.get(c, c)
 SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🎯 יעדים", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
 section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
 with menu_pop:
-    st.divider()
-    st.markdown("**⚙️ הגדרות**")
+    menu.group("הגדרות")
     classes = sorted({a[2] for a in assets.values()})
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes, format_func=he)
     BENCH = {"BTC": "BTC-USD", "SPY": "SPY", "QQQ": "QQQ", "TQQQ": "TQQQ"}   # label -> Yahoo ticker

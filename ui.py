@@ -31,8 +31,15 @@ _CSS = """
 /* a full-height drawer on the right: top to bottom of the screen; tap outside it to close */
 [data-testid="stPopoverBody"] { position: fixed !important; inset: 0 0 0 auto !important; transform: none !important;
     height: 100vh !important; height: 100dvh !important; max-height: none !important; overflow-y: auto;
-    border-radius: 0 !important; padding-top: max(1.2rem, env(safe-area-inset-top)) !important;
-    box-shadow: -8px 0 24px rgba(0,0,0,.45) !important; z-index: 1000 !important; }
+    border-radius: 24px 0 0 24px !important; padding: max(1.4rem, env(safe-area-inset-top)) 1.4rem 1.4rem !important;
+    background: #1b1c21 !important; border: none !important;
+    box-shadow: -10px 0 30px rgba(0,0,0,.55) !important; z-index: 1000 !important; }
+[data-testid="stPopoverBody"] .menu-title { font-size: 1.6rem; font-weight: 700; margin: .2rem 0 1rem; }
+[data-testid="stPopoverBody"] .menu-group { font-size: .95rem; color: rgba(250,250,250,.5); margin: 1.1rem 0 .3rem; }
+[data-testid="stPopoverBody"] [data-testid="stPageLink-NavLink"] { gap: .9rem !important; border-radius: 12px !important; }
+[data-testid="stPopoverBody"] [data-testid="stPageLink-NavLink"] [data-testid="stIconMaterial"] {
+    font-size: 1.6rem !important; opacity: .85; }
+[data-testid="stPopoverBody"] [data-testid="stElementContainer"] { margin-bottom: 0 !important; }
 
 /* Insight cards */
 .ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }

@@ -35,8 +35,16 @@ def top(overlap: bool = False):
         except TypeError:
             pop = st.popover("☰")
     with pop:
+        st.markdown('<div class="menu-title">תפריט</div>', unsafe_allow_html=True)
         for i, page in enumerate(NAV):
+            if i == 0:
+                st.markdown('<div class="menu-group">התיק</div>', unsafe_allow_html=True)
             if i == len(NAV) - 2:                      # the dashboard sections first, then the tools
-                st.divider()
+                st.markdown('<div class="menu-group">כלים</div>', unsafe_allow_html=True)
             st.page_link(page)
     return pop
+
+
+def group(title: str):
+    """A small grey group heading inside the menu (e.g. before the page's own settings)."""
+    st.markdown(f'<div class="menu-group">{title}</div>', unsafe_allow_html=True)

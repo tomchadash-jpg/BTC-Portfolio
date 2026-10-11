@@ -22,8 +22,12 @@ import menu
 
 DASHBOARD = str(Path(__file__).resolve().parent / "dashboard.py")
 # (title, icon, url) - every section of the dashboard is its own page in the ☰ menu
-SECTIONS = [("שווי היסטורי", "📊", "history"), ("השוואה למדדים", "🆚", "benchmarks"), ("יעדים", "🎯", "goals"),
-            ("נכסים", "📋", "assets"), ("תובנות", "💡", "insights"), ("Power Law", "📐", "powerlaw")]
+SECTIONS = [("שווי היסטורי", ":material/show_chart:", "history"),
+            ("השוואה למדדים", ":material/compare_arrows:", "benchmarks"),
+            ("יעדים", ":material/flag:", "goals"),
+            ("נכסים", ":material/account_balance_wallet:", "assets"),
+            ("תובנות", ":material/lightbulb:", "insights"),
+            ("Power Law", ":material/stacked_line_chart:", "powerlaw")]
 
 
 def section_page(i: int):
@@ -36,8 +40,8 @@ def section_page(i: int):
 
 pages = [st.Page(section_page(i), title=t, icon=ic, url_path=u, default=(i == 0))
          for i, (t, ic, u) in enumerate(SECTIONS)]
-pages += [st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon="📥"),
-          st.Page("pages/fees.py", title="עמלות", icon="💸")]
+pages += [st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon=":material/upload_file:"),
+          st.Page("pages/fees.py", title="עמלות", icon=":material/receipt_long:")]
 menu.NAV = pages                                       # the ☰ menu links to these
 pg = st.navigation(pages, position="hidden")
 pg.run()
