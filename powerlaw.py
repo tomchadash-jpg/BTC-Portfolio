@@ -10,11 +10,28 @@ Used by the app (charts, cards) and by the daily alert (scripts/powerlaw_alert.p
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 GENESIS = pd.Timestamp("2009-01-03")
 A, N = 1.0117e-17, 5.82          # Santostasi's published fit
+
+
+EARLY_CSV = Path(__file__).resolve().parent / "data" / "btc_early.csv"
+
+
+def with_early_history(recent: pd.Series) -> pd.Series:
+    """Daily BTC/USD from the first exchange prices (Mt.Gox, 27/07/2010) up to today.
+
+    Yahoo's BTC-USD starts 17/09/2014; the earlier days come from data/btc_early.csv
+    (daily closes 27/07/2010-16/09/2014, from a public historical dataset)."""
+    early = pd.read_csv(EARLY_CSV, parse_dates=["date"]).set_index("date")["close"]
+    recent = recent.dropna()
+    if len(recent):
+        early = early[early.index < recent.index[0]]
+    return pd.concat([early, recent]).sort_index()
 
 
 def days(index) -> np.ndarray:

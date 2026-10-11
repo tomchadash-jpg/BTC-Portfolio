@@ -804,7 +804,7 @@ with t5:
                         f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
 
 with t6:
-    btc_all = history("BTC-USD", "2010-07-17")
+    btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
     if btc_all.empty:
         st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
     else:
@@ -860,14 +860,15 @@ with t6:
                                     y=[float(t.price_per_unit) for t in my_btc], mode="markers", name="הקניות שלך",
                                     marker=dict(color="#ffffff", size=5, line=dict(color="#F7931A", width=1)),
                                     hovertemplate="$%{y:,.0f}<extra>קנייה</extra>"))
-        start_view = pd.Timestamp.today() - pd.DateOffset(years=4)
+        start_view = btc_all.index[0]                                    # the whole map, from the first prices
         fp.update_layout(title=f"BTC מול Power Law – {mode}", height=460, hovermode="x unified",
                          legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                          yaxis=dict(type="log", tickprefix="$", title=None),
                          xaxis=dict(range=[start_view, future[-1]], title=None))
         st.plotly_chart(fp, use_container_width=True, config=CHART_CFG)
         st.caption(f"כל קו צבעוני הוא גבול בין {unit} ל{unit}: ירוק בתחתית (זול ביחס למגמה) עד אדום למעלה. "
-                   f"החלוקה לפי כל ימי המסחר מאז {btc_all.index[0]:%m/%Y}. גוללים שמאלה לראות את כל ההיסטוריה.")
+                   f"החלוקה לפי כל ימי המסחר מאז {btc_all.index[0]:%d/%m/%Y} (המחירים הראשונים בבורסה, Mt.Gox). "
+                   f"אפשר להגדיל קטע בצביטה.")
 
         # where the buy zone will be in the coming months (the trend keeps rising)
         months = pd.date_range(pd.Timestamp.today().normalize(), periods=13, freq="MS")[1:]

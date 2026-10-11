@@ -29,6 +29,7 @@ def gh(method, path, body=None):
 
 h = yf.Ticker("BTC-USD").history(period="max", auto_adjust=True)["Close"]
 h.index = h.index.tz_localize(None).normalize()
+h = PL.with_early_history(h)                    # same history as the app: from 07/2010
 s = PL.status(h, 10)
 band, price, fair = s["band"], s["price"], s["trend"]
 edge = s["edges_today"][ZONE - 1]
