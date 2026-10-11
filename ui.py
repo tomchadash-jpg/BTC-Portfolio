@@ -20,6 +20,12 @@ _CSS = """
     width: min(300px, 82vw) !important; min-width: 0 !important; max-width: 82vw !important; }
 [data-testid="stPopoverBody"] * { text-align: right; }
 [data-testid="stPopoverBody"] [data-baseweb="slider"] { direction: ltr; }
+/* bigger, easier-to-tap page links in the ☰ menu */
+[data-testid="stPopoverBody"] [data-testid^="stPageLink"] a, [data-testid="stPopoverBody"] a[data-testid^="stPageLink"] {
+    padding: .45rem .5rem !important; }
+[data-testid="stPopoverBody"] [data-testid^="stPageLink"] p, [data-testid="stPopoverBody"] [data-testid^="stPageLink"] span,
+[data-testid="stPopoverBody"] a[data-testid^="stPageLink"] p, [data-testid="stPopoverBody"] a[data-testid^="stPageLink"] span {
+    font-size: 1.2rem !important; line-height: 1.5 !important; }
 [data-testid="stPopoverBody"] { position: fixed !important; inset: 3.6rem .5rem auto auto !important;
     transform: none !important; max-height: 80vh; overflow-y: auto; }
 
