@@ -8,7 +8,9 @@ _CSS = """
 .stApp, .stApp p, .stApp li, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
 .stApp input, .stApp textarea, .stApp button, .stApp [data-testid="stMarkdownContainer"],
 .stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricLabel"],
-.stApp [data-baseweb="tab"], .stApp .ins-card {
+.stApp [data-baseweb="tab"], .stApp .ins-card,
+[data-testid="stPopoverBody"], [data-testid="stPopoverBody"] p, [data-testid="stPopoverBody"] span:not([data-testid="stIconMaterial"]),
+[data-testid="stPopoverBody"] label, [data-testid="stPopoverBody"] a {
     font-family: 'Rubik', -apple-system, 'Segoe UI', sans-serif !important; }
 .stApp p, .stApp li { line-height: 1.6; }
 .stApp h1, .stApp h2, .stApp h3 { font-weight: 700; letter-spacing: -.01em; }
