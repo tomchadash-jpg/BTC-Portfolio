@@ -20,10 +20,11 @@ import importlib
 import accounts as A
 import engine as E
 import insights as I
+import powerlaw as PL
 
 # Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
 # modules in memory; reload them so new functions are always there.
-for _m in (A, E, I):
+for _m in (A, E, I, PL):
     importlib.reload(_m)
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
@@ -378,7 +379,8 @@ with st.expander("ℹ️ מה המדדים אומרים?"):
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
 """)
 
-t1, t2, t3, t4, t5 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות"])
+t1, t2, t3, t4, t5, t6 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות",
+                                   "📐 Power Law"])
 
 with t1:
     cmp_df = pd.DataFrame({"שווי": nw_usd * fx, "הושקע": inv_cum})
@@ -800,6 +802,82 @@ with t5:
             st.markdown(f"- הנכס הגדול ביותר: **{cc['top']}** – {cc['top_pct']:.0f}% מהתיק.\n"
                         f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
                         f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
+
+with t6:
+    btc_all = history("BTC-USD", "2010-07-17")
+    if btc_all.empty:
+        st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
+    else:
+        mode = st.radio("חלוקה", ["עשירונים", "חמישונים"], horizontal=True, key="pl_k")
+        k = 10 if mode == "עשירונים" else 5
+        unit = "עשירון" if k == 10 else "חמישון"
+        live_btc = live.get(CG["BTC"]) if CG["BTC"] in live else None
+        stt = PL.status(btc_all, k, now_price=live_btc)
+        b = stt["band"]
+        buy_zone = b <= 2 if k == 10 else b == 1
+        if b == 1:
+            st.success(f"🟢🟢 **{unit} התחתון** – הביטקוין זול יותר ביחס למגמה מ-{100 - stt['percentile']:.0f}% מהימים "
+                       f"בהיסטוריה. לפי הכלל שלך: אזור להגדלת ה-DCA.")
+        elif buy_zone:
+            st.success(f"🟢 **{unit} {b} מלמטה** – מתחת ל-{stt['percentile']:.0f}% מהימים בהיסטוריה זה היה זול עוד יותר. "
+                       f"לפי הכלל שלך: אזור להגדלת ה-DCA.")
+        else:
+            st.info(f"{unit} **{b} מתוך {k}** – לא באזור התחתון. אין אות להגדלת DCA.")
+
+        d2 = lambda v: f"${v:,.0f}".replace("$", "&#36;")
+        e = stt["edges_today"]
+        zone_top = e[1] if k == 10 else e[0]          # top of the bottom two deciles / bottom quintile
+        above = (stt["price"] / zone_top - 1) * 100
+        cards([("📍", f"{b}/{k}", f"{unit} נוכחי", f"אחוזון {stt['percentile']:.0f} מכל ההיסטוריה ביחס למגמה.",
+                "good" if buy_zone else None),
+               ("₿", d2(stt["price"]), "מחיר עכשיו", f"{stt['ratio']:.2f}× מקו המגמה", None),
+               ("📏", d2(stt["trend"]), "קו המגמה היום", "Power Law של Santostasi", None),
+               ("🎯", d2(zone_top), "גבול אזור ההגדלה היום",
+                ("מתחת למחיר הזה = שני העשירונים התחתונים." if k == 10 else "מתחת למחיר הזה = החמישון התחתון.")
+                + (" כרגע בתוך האזור." if buy_zone else f" כרגע {above:.0f}% מעליו."),
+                "good" if buy_zone else None)])
+
+        # chart: price (log scale) inside the bands, from the start of the data to 2 years ahead
+        future = pd.date_range(btc_all.index[-1] + pd.Timedelta(days=1), periods=730, freq="D")
+        full_idx = btc_all.index.append(future)
+        bp = PL.band_prices(full_idx, PL.edges(btc_all, k))
+        weekly = bp.iloc[::7]
+        cols = [f"e{i}" for i in range(1, k)]
+        greens_reds = ["#1a7f4b", "#2e9e5b", "#6cbf5a", "#b5d455", "#f2d649", "#f2b84b", "#ee8a45", "#e3613f", "#c8373a"]
+        fill = greens_reds if k == 10 else [greens_reds[i] for i in (1, 3, 5, 7)]
+        fp = go.Figure()
+        for i, c in enumerate(cols):
+            fp.add_trace(go.Scatter(x=weekly.index, y=weekly[c], mode="lines", line=dict(width=0.8, color=fill[i]),
+                                    name=f"גבול {unit} {i + 1}", hovertemplate="$%{y:,.0f}<extra>" + f"{i + 1}|{i + 2}" + "</extra>",
+                                    showlegend=False))
+        fp.add_trace(go.Scatter(x=weekly.index, y=weekly["trend"], mode="lines", name="קו המגמה",
+                                line=dict(color="#9aa0a6", width=1.5, dash="dash"), hovertemplate="$%{y:,.0f}<extra>מגמה</extra>"))
+        fp.add_trace(go.Scatter(x=btc_all.index, y=btc_all, mode="lines", name="BTC", line=dict(color="#F7931A", width=1.8),
+                                hovertemplate="$%{y:,.0f}<extra>BTC</extra>"))
+        my_btc = [t for t in txs if assets[t.asset_id][0] == "BTC" and t.type == "BUY"]
+        if my_btc:
+            fp.add_trace(go.Scatter(x=[pd.Timestamp(t.timestamp).tz_localize(None) for t in my_btc],
+                                    y=[float(t.price_per_unit) for t in my_btc], mode="markers", name="הקניות שלך",
+                                    marker=dict(color="#ffffff", size=5, line=dict(color="#F7931A", width=1)),
+                                    hovertemplate="$%{y:,.0f}<extra>קנייה</extra>"))
+        start_view = pd.Timestamp.today() - pd.DateOffset(years=4)
+        fp.update_layout(title=f"BTC מול Power Law – {mode}", height=460, hovermode="x unified",
+                         legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
+                         yaxis=dict(type="log", tickprefix="$", title=None),
+                         xaxis=dict(range=[start_view, future[-1]], title=None))
+        st.plotly_chart(fp, use_container_width=True, config=CHART_CFG)
+        st.caption(f"כל קו צבעוני הוא גבול בין {unit} ל{unit}: ירוק בתחתית (זול ביחס למגמה) עד אדום למעלה. "
+                   f"החלוקה לפי כל ימי המסחר מאז {btc_all.index[0]:%m/%Y}. גוללים שמאלה לראות את כל ההיסטוריה.")
+
+        # where the buy zone will be in the coming months (the trend keeps rising)
+        months = pd.date_range(pd.Timestamp.today().normalize(), periods=13, freq="MS")[1:]
+        mp = PL.band_prices(months, PL.edges(btc_all, k))
+        st.markdown("##### גבול אזור ההגדלה בחודשים הקרובים")
+        st.dataframe(pd.DataFrame({"חודש": [d.strftime("%m/%Y") for d in months],
+                                   "גבול אזור ההגדלה": mp["e2" if k == 10 else "e1"].round(0),
+                                   "קו המגמה": mp["trend"].round(0)})
+                     .style.format({"גבול אזור ההגדלה": "${:,.0f}", "קו המגמה": "${:,.0f}"}),
+                     use_container_width=True, hide_index=True)
 
 with st.expander("📒 ספר עסקאות"):
     st.dataframe(pd.DataFrame([{**t.__dict__, "asset": assets[t.asset_id][0]} for t in tx_f]),
