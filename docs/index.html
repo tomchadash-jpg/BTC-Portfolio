@@ -4,17 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Portfolio</title>
-  <!-- Home-screen icon & name (iOS reads these when you "Add to Home Screen") -->
+  <!-- Home-screen icon & name (iOS reads these when you "Add to Home Screen").
+       No web-app/standalone mode on purpose: the icon opens in regular Safari,
+       which keeps the Streamlit / GitHub sign-in. -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-  <link rel="manifest" href="manifest.json">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="My Portfolio">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0A0F1E">
   <style>
-    :root { --bg:#0A0F1E; --fg:#E5E7EB; --muted:#94A3B8; --accent:#F7931A; }
+    :root { --fg:#E5E7EB; --muted:#94A3B8; --accent:#F7931A; }
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; background:linear-gradient(#16203A,#0A0F1E); color:var(--fg);
            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
@@ -23,39 +21,57 @@
     img { width:120px; height:120px; border-radius:27px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
     h1 { font-size:24px; margin:20px 0 8px; }
     p { color:var(--muted); line-height:1.6; margin:0 0 20px; }
-    a.btn { display:inline-block; background:var(--accent); color:#111; font-weight:700; text-decoration:none;
-            padding:14px 28px; border-radius:14px; }
+    .btn { display:inline-block; background:var(--accent); color:#111; font-weight:700; text-decoration:none;
+           padding:14px 28px; border-radius:14px; border:0; font-size:17px; }
+    .link { color:var(--muted); display:inline-block; margin-top:14px; }
     ol { text-align:right; color:var(--muted); line-height:1.9; padding-inline-start:20px; margin:24px 0 0; }
-    .launching #setup { display:none; }
-    #launch { display:none; }
-    .launching #launch { display:block; }
+    section { display:none; }
+    body[data-view="setup"] #setup, body[data-view="ready"] #ready, body[data-view="launch"] #launch { display:block; }
   </style>
 </head>
-<body>
+<body data-view="setup">
 <main>
   <img src="icon-512.png" alt="">
-  <div id="launch"><h1>פותח את התיק…</h1></div>
-  <div id="setup">
+
+  <section id="launch"><h1>פותח את התיק…</h1></section>
+
+  <section id="setup">
     <h1>My Portfolio</h1>
-    <p>להוספת האפליקציה למסך הבית עם הלוגו הזה:</p>
-    <a class="btn" id="open" href="#">פתח את האפליקציה</a>
+    <p>להוספה למסך הבית, הקש קודם על הכפתור:</p>
+    <a class="btn" href="?go=1" id="prepare">הכן להוספה למסך הבית</a><br>
+    <a class="link" id="open" href="#">או פתח את האפליקציה עכשיו</a>
+  </section>
+
+  <section id="ready">
+    <h1>מוכן ✅</h1>
+    <p>עכשיו הוסף את הדף הזה למסך הבית:</p>
     <ol>
-      <li>בספארי, הקש על כפתור השיתוף ⬆️</li>
+      <li>הקש על ••• ואז על שיתוף ⬆️</li>
       <li>בחר "הוסף למסך הבית"</li>
-      <li>אשר — והאייקון החדש יופיע במסך הבית</li>
+      <li><b>כבה</b> את "פתח כאפליקציה רשת" (Open as Web App)</li>
+      <li>הקש "הוסף"</li>
     </ol>
-  </div>
+  </section>
 </main>
 <script>
-  // Address of the Streamlit app
   const APP_URL = "https://btc-portfolio-jguv8kcdauchggtvou2z9w.streamlit.app";
   document.getElementById("open").href = APP_URL;
-  // Opened from the home-screen icon → go straight to the app.
+
+  function store(fn) { try { return fn(); } catch (e) { return null; } }
+  const go = new URLSearchParams(location.search).has("go");
   const standalone = window.navigator.standalone === true ||
                      window.matchMedia("(display-mode: standalone)").matches;
-  if (standalone) {
-    document.body.classList.add("launching");
-    window.location.replace(APP_URL);
+
+  document.getElementById("prepare").addEventListener("click", function () {
+    // Remember (for this tab only) that we're setting up, so ?go=1 won't redirect yet.
+    store(() => sessionStorage.setItem("preparing", "1"));
+  });
+
+  if (go && store(() => sessionStorage.getItem("preparing")) === "1") {
+    document.body.dataset.view = "ready";          // the tab we're adding from
+  } else if (go || standalone) {
+    document.body.dataset.view = "launch";         // opened from the home-screen icon
+    location.replace(APP_URL);
   }
 </script>
 </body>
