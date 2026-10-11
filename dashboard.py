@@ -20,6 +20,7 @@ import importlib
 import accounts as A
 import engine as E
 import insights as I
+import menu
 import powerlaw as PL
 
 # Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
@@ -149,6 +150,7 @@ if not txs:
     st.info("אין עסקאות עדיין. הוסף בעמוד add transaction בתפריט הצד")
     st.stop()
 
+menu_pop = menu.top(overlap=True)          # ☰ at the top right; the title sits on the left of the same row
 st.markdown("<h1 dir='ltr' style='text-align:left'>📈 Portfolio Tracker</h1>", unsafe_allow_html=True)
 
 # ------------------------------ account sections ------------------------------
@@ -171,10 +173,11 @@ start = min(t.timestamp for t in txs).strftime("%Y-%m-%d")
 idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
-with st.sidebar:
+with menu_pop:
+    st.divider()
     section = st.radio("תצוגה", SECTIONS, key="section")
     st.divider()
-    st.title("⚙️ הגדרות")
+    st.markdown("**⚙️ הגדרות**")
     classes = sorted({a[2] for a in assets.values()})
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes)
     BENCH = {"BTC": "BTC-USD", "SPY": "SPY", "QQQ": "QQQ", "TQQQ": "TQQQ"}   # label -> Yahoo ticker
@@ -280,7 +283,7 @@ if dca_on and btc_tx:
                "mine": mine, "inv": (btc_new * fx).cumsum(), "start": first,
                "twr": E.twr_index(dca_usd, buy)}
     else:
-        st.sidebar.warning("אין מספיק נתונים לחישוב DCA יומי")
+        st.caption("אין מספיק נתונים לחישוב DCA יומי")
 nw_now = (float(summ.net_worth) + float(cash_usd.iloc[-1])) * fx_now
 
 afx, unreal_ccy, cost_ccy = {}, 0.0, 0.0

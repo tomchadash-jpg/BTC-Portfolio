@@ -13,6 +13,8 @@ import ui
 ui.rtl()
 import gate
 gate.require_login()  # nothing below runs without the password
+import menu
+menu.top()
 
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 URL, UID = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
