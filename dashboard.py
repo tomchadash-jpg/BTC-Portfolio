@@ -28,7 +28,7 @@ import powerlaw as PL
 for _m in (A, E, I, PL):
     importlib.reload(_m)
 
-st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
+st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=":material/show_chart:")
 
 import ui
 ui.rtl()
@@ -36,6 +36,8 @@ import gate
 gate.require_login()  # nothing below runs without the password
 
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
+# a Material Symbols icon (same outline style as the menu) inside raw HTML
+MI = "<span style=\"font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;vertical-align:-0.15em\">{}</span>"
 
 
 # ------------------------------ data layer ------------------------------
@@ -152,7 +154,8 @@ if not txs:
     st.stop()
 
 menu_pop = menu.top(overlap=True)          # ☰ at the top right; the title sits on the left of the same row
-st.markdown("<h1 dir='ltr' style='text-align:left'>📈 Portfolio Tracker</h1>", unsafe_allow_html=True)
+st.markdown("<h1 dir='ltr' style='text-align:left'>" + MI.format("show_chart") + " Portfolio Tracker</h1>",
+            unsafe_allow_html=True)
 
 # ------------------------------ account sections ------------------------------
 acct_txs = {a: [t for t in txs if A.account_of(t.notes) == a] for a in A.ORDER}
@@ -175,7 +178,7 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🎯 יעדים", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
+SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law"]
 section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
 with menu_pop:
     menu.group("הגדרות")
@@ -192,7 +195,7 @@ with menu_pop:
 c1, c2, c3 = st.columns([2, 3, 2])
 ccy = c1.radio("מטבע תצוגה", ["USD", "ILS"], horizontal=True)
 rng = c2.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], value="ALL")
-if c3.button("🔄 רענן מחירים"):
+if c3.button("רענן מחירים", icon=":material/refresh:"):
     st.cache_data.clear()
     st.rerun()
 
@@ -373,7 +376,7 @@ if held:
 if ccy == "ILS":
     st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
                "ולכן הרווח וההפסד כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
-with st.expander("ℹ️ מה המדדים אומרים?"):
+with st.expander("מה המדדים אומרים?", icon=":material/info:"):
     st.markdown("""
 - **סה״כ הושקע**: כל הכסף ששילמת על קניות מאז ההתחלה, כולל עמלות בורסה.
 - **מחיר רכישה ממוצע**: כמה שילמת בממוצע על יחידה אחת (למשל BTC אחד), כולל עמלות בורסה ומשוקלל לפי הכמות שקנית בכל עסקה. בשקלים לפי ממוצע השערים בימי הקנייה.
@@ -398,7 +401,7 @@ def cards(items):
             f'<div dir="rtl" style="background:rgba(128,128,128,.10);border-radius:12px;padding:10px 12px;'
             f'border-right:4px solid {edge.get(tone, "rgba(128,128,128,.35)")};text-align:right">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
-            f'<span style="font-size:1.2rem">{icon}</span>'
+            f'<span style="font-family:\'Material Symbols Rounded\';font-size:1.6rem;line-height:1;opacity:.85">{icon}</span>'
             f'<span dir="ltr" style="font-size:1.45rem;font-weight:700;color:{num.get(tone, "inherit")};'
             f'font-variant-numeric:tabular-nums">{big}</span></div>'
             f'<div style="font-weight:600;font-size:.92rem;margin-top:4px">{title}</div>'
@@ -520,24 +523,24 @@ if section == SECTIONS[2]:
         pace = recent / 90                                  # BTC per day over the last 3 months
         pct_done = min(have / btc_goal * 100, 100)
         st.progress(pct_done / 100, text=f"{have:.4f} מתוך {btc_goal:g} BTC · {pct_done:.1f}%")
-        items = [("🧱", f"₿{left:.4f}", "נשאר לצבור", f"{left * 1e8 / 1e6:,.1f}M sats", None),
-                 ("💵", money(left * btc_px_now * fx_now).replace("$", "&#36;"), "עלות ההשלמה במחיר של היום",
+        items = [("savings", f"₿{left:.4f}", "נשאר לצבור", f"{left * 1e8 / 1e6:,.1f}M sats", None),
+                 ("payments", money(left * btc_px_now * fx_now).replace("$", "&#36;"), "עלות ההשלמה במחיר של היום",
                   f"לפי {money(btc_px_now * fx_now).replace('$', '&#36;')} לביטקוין", None)]
         if left <= 0:
-            items = [("🏁", "✓", "היעד הושג", f"יש לך {have:.4f} BTC", "good")]
+            items = [("flag", "✓", "היעד הושג", f"יש לך {have:.4f} BTC", "good")]
         elif pace > 0:
             eta = today + pd.Timedelta(days=left / pace)
-            items.append(("⏳", f"{eta:%m/%Y}", "בקצב של 3 החודשים האחרונים",
+            items.append(("hourglass_top", f"{eta:%m/%Y}", "בקצב של 3 החודשים האחרונים",
                           f"{pace * 30:.4f} BTC בחודש ({pace * 1e8 * 30 / 1e6:,.2f}M sats). "
                           f"עוד כ-{left / pace / 365:.1f} שנים.", None))
         else:
-            items.append(("⏳", "–", "קצב צבירה", "לא היו קניות ב-3 החודשים האחרונים.", None))
+            items.append(("hourglass_top", "–", "קצב צבירה", "לא היו קניות ב-3 החודשים האחרונים.", None))
         cards(items)
         st.caption("כל הביטקוין שבבעלותך – בארנק הקר ובבורסות. ה-IBIT בגמל לא נספר, הוא קרן ולא ביטקוין. "
                    "היעד ניתן לשינוי בתפריט ☰.")
 
     # ---------- goal 2: קרן השתלמות beats bitcoin ----------
-    st.subheader("📈 יעד: קרן ההשתלמות מנצחת את הביטקוין")
+    st.subheader(":material/trending_up: יעד: קרן ההשתלמות מנצחת את הביטקוין")
     k_txs = [t for t in all_txs if A.account_of(t.notes) == "קרן השתלמות"]
     if not k_txs or not btc_aid:
         st.info("אין עדיין עסקאות בקרן ההשתלמות")
@@ -558,7 +561,7 @@ if section == SECTIONS[2]:
             b_r = float(btc_k.iloc[-1] / btc_k[btc_k.index >= p0].iloc[0] - 1) * 100
             gap = k_r - b_r
             wins += gap > 0
-            items.append(("✅" if gap > 0 else "❌", f"{gap:+.1f}%", label,
+            items.append(("check_circle" if gap > 0 else "cancel", f"{gap:+.1f}%", label,
                           f"הקרן {k_r:+.1f}% · ביטקוין {b_r:+.1f}%", "good" if gap > 0 else "bad"))
         cards(items)
         st.caption(f"ביצועי יתר = התשואה של הקרן (TWR, לא מושפעת מהפקדות) פחות התשואה של ביטקוין באותה תקופה. "
@@ -613,7 +616,7 @@ if section == SECTIONS[4]:
     def buy_cards(df):
         out = []
         rp = I.wavg(df, "range_pct")
-        out.append(("📍", f"{rp:.0f}%", "איפה בטווח החודשי קנית",
+        out.append(("location_on", f"{rp:.0f}%", "איפה בטווח החודשי קנית",
                     "0% = היום הכי זול בחודש שמסביב, 100% = הכי יקר. "
                     + ("קנית קרוב לתחתיות." if rp < 35 else "נטייה לקנות קרוב לשיאים." if rp > 65
                        else "בערך כמו קנייה בזמן אקראי."),
@@ -625,21 +628,21 @@ if section == SECTIONS[4]:
         if u90 is not None and d90 is not None:
             txt += f" אחרי 90 יום: קניות בירידה {pct(d90)}, קניות בעלייה {pct(u90)}."
             tone = "good" if d90 > u90 else "bad"
-        out.append(("📉", f"{share(df, down):.0f}%", "קנית בירידות", txt, tone))
+        out.append(("trending_down", f"{share(df, down):.0f}%", "קנית בירידות", txt, tone))
         a90 = I.wavg(df, "after_90")
         if a90 is not None:
-            out.append(("⏱️", pct(a90), "90 יום אחרי קנייה", "השינוי הממוצע במחיר ב-3 החודשים שאחרי כל קנייה.",
+            out.append(("timer", pct(a90), "90 יום אחרי קנייה", "השינוי הממוצע במחיר ב-3 החודשים שאחרי כל קנייה.",
                         "good" if a90 > 0 else "bad"))
         d = df.dropna(subset=["after_90"])
         if len(d) >= 3:
             bst, wst = d.loc[d.after_90.idxmax()], d.loc[d.after_90.idxmin()]
-            out.append(("🏆", pct(bst.after_90), "הקנייה הכי מוצלחת",
+            out.append(("emoji_events", pct(bst.after_90), "הקנייה הכי מוצלחת",
                         f"{bst.asset} · {bst.date:%d/%m/%Y} · {cash_fmt(bst.usd)}", "good"))
-            out.append(("🫠", pct(wst.after_90), "הקנייה הכי פחות מוצלחת",
+            out.append(("sentiment_dissatisfied", pct(wst.after_90), "הקנייה הכי פחות מוצלחת",
                         f"{wst.asset} · {wst.date:%d/%m/%Y} · {cash_fmt(wst.usd)}", "bad"))
         return out
 
-    st.subheader("🟢 קניות")
+    st.subheader(":material/add_shopping_cart: קניות")
     btc_b = buys_t[buys_t.asset == "BTC"] if not buys_t.empty else buys_t
     stk_b = buys_t[buys_t.asset != "BTC"] if not buys_t.empty else buys_t
     if not btc_b.empty:
@@ -648,13 +651,13 @@ if section == SECTIONS[4]:
         bid = next(a for a in assets if assets[a][0] == "BTC")
         ap = I.avg_price_vs_period(tx_f, prices, bid)
         if ap:
-            items.append(("🎯", pct(ap["diff_pct"]), "מחיר ממוצע מול קנייה יומית",
+            items.append(("target", pct(ap["diff_pct"]), "מחיר ממוצע מול קנייה יומית",
                           f"שילמת בממוצע {cash_fmt(ap['mine'])} מול {cash_fmt(ap['period_avg'])} – הממוצע היומי "
                           f"בתקופה שקנית ({ap['first']:%m/%Y}–{ap['last']:%m/%Y}).",
                           "good" if ap["diff_pct"] < 0 else "bad"))
         items += buy_cards(btc_b)
         near, deep = btc_b.from_ath > -10, btc_b.from_ath < -30
-        items.append(("🏔️", f"{I.wavg(btc_b, 'from_ath'):.0f}%", "מרחק ממוצע מהשיא בזמן קנייה",
+        items.append(("landscape", f"{I.wavg(btc_b, 'from_ath'):.0f}%", "מרחק ממוצע מהשיא בזמן קנייה",
                       f"{share(btc_b, near):.0f}% מהכסף נקנה בטווח 10% מהשיא, "
                       f"{share(btc_b, deep):.0f}% כשהיה 30%+ מתחתיו.", None))
         cards(items)
@@ -670,10 +673,10 @@ if section == SECTIONS[4]:
             use_container_width=True, hide_index=True)
 
     if not sells_t.empty:
-        st.subheader("🔴 מכירות")
+        st.subheader(":material/sell: מכירות")
         items = []
         rp = I.wavg(sells_t, "range_pct")
-        items.append(("📍", f"{rp:.0f}%", "איפה בטווח החודשי מכרת",
+        items.append(("location_on", f"{rp:.0f}%", "איפה בטווח החודשי מכרת",
                       "100% = מכרת ביום הכי יקר בחודש שמסביב. "
                       + ("מכרת קרוב לשיאים." if rp > 65 else "מכרת קרוב לתחתיות." if rp < 35
                          else "בערך כמו מכירה בזמן אקראי."),
@@ -681,13 +684,13 @@ if section == SECTIONS[4]:
         for col, n in (("after_30", 30), ("after_90", 90)):
             v = I.wavg(sells_t, col)
             if v is not None:
-                items.append(("🔭", pct(v), f"{n} יום אחרי מכירה",
+                items.append(("visibility", pct(v), f"{n} יום אחרי מכירה",
                               "המחיר המשיך לרדת – המכירות הקדימו ירידות." if v < 0 else "המחיר עלה אחרי שמכרת.",
                               "good" if v < 0 else "bad"))
         drop = sells_t[sells_t.before_30 < -15]
         if len(drop):
             v = I.wavg(drop, "after_30")
-            items.append(("😬", str(len(drop)), "מכירות אחרי ירידה חדה",
+            items.append(("warning", str(len(drop)), "מכירות אחרי ירידה חדה",
                           "מכירות אחרי ירידה של 15%+ בחודש שלפני."
                           + (f" אחריהן המחיר {'המשיך לרדת' if v < 0 else 'התאושש'}: {pct(v)} תוך 30 יום." if v is not None else ""),
                           ("good" if v < 0 else "bad") if v is not None else None))
@@ -702,7 +705,7 @@ if section == SECTIONS[4]:
 
     traded = sorted({assets[t.asset_id][0] for t in tx_f if t.type in ("BUY", "SELL") and float(t.price_per_unit) > 0})
     if traded:
-        st.subheader("📍 איפה קנית ומכרת")
+        st.subheader(":material/location_on: איפה קנית ומכרת")
         pick = st.selectbox("נכס", traded, index=traded.index("BTC") if "BTC" in traded else 0)
         aid = next(a for a in assets if assets[a][0] == pick)
         tt = [t for t in tx_f if t.asset_id == aid and t.type in ("BUY", "SELL") and float(t.price_per_unit) > 0]
@@ -730,7 +733,7 @@ if section == SECTIONS[4]:
 
     rt = I.rotations(tx_f, assets, prices)
     if not rt.empty:
-        st.subheader("🔁 החלפות בין נכסים")
+        st.subheader(":material/sync_alt: החלפות בין נכסים")
         st.caption("מכרת נכס וקנית אחר באותו תיק תוך שבועיים: מה עשה כל אחד מאז ההחלפה.")
         st.dataframe(pd.DataFrame({"מתאריך": rt.date, "מכרת": rt.sold, "קנית": rt.bought,
                                    "סכום": rt.amount * fx_now, "מה שמכרת %": rt.sold_ret,
@@ -750,55 +753,55 @@ if section == SECTIONS[4]:
         u90, d90 = I.wavg(df[up], "after_90"), I.wavg(df[down], "after_90")
         if u90 is not None and d90 is not None and abs(d90 - u90) >= 5:
             if d90 > u90:
-                lessons.append(("📉", pct(d90 - u90), f"{name}: ירידות היו הזדמנות",
+                lessons.append(("trending_down", pct(d90 - u90), f"{name}: ירידות היו הזדמנות",
                                 f"קניות אחרי ירידה של 10%+ הניבו {pct(d90)} ב-90 יום, מול {pct(u90)} אחרי עליות. "
                                 f"כלל לשקול: לשמור חלק מהתקציב לימים של ירידה חדה.", "good"))
             else:
-                lessons.append(("🚀", pct(u90 - d90), f"{name}: המומנטום עבד לך",
+                lessons.append(("rocket_launch", pct(u90 - d90), f"{name}: המומנטום עבד לך",
                                 f"קניות אחרי עלייה הניבו {pct(u90)} ב-90 יום, מול {pct(d90)} אחרי ירידות – "
                                 f"אצלך 'לתפוס סכין נופלת' עבד פחות טוב.", None))
         rp = I.wavg(df, "range_pct")
         if rp is not None and rp > 60:
-            lessons.append(("🧊", f"{rp:.0f}%", f"{name}: לא למהר לקנות",
+            lessons.append(("schedule", f"{rp:.0f}%", f"{name}: לא למהר לקנות",
                             "רוב הכסף נקנה קרוב לשיאים המקומיים של החודש. פיצול כל קנייה ל-3–4 חלקים "
                             "על פני כמה שבועות היה מוריד את המחיר הממוצע.", "bad"))
     if not btc_b.empty and ap:
         if ap["diff_pct"] > 1:
-            lessons.append(("🤖", pct(ap["diff_pct"]), "ביטקוין: קנייה קבועה הייתה זולה יותר",
+            lessons.append(("smart_toy", pct(ap["diff_pct"]), "ביטקוין: קנייה קבועה הייתה זולה יותר",
                             "קנייה יומית או שבועית באותו סכום הייתה נותנת מחיר ממוצע נמוך יותר מהתזמון הידני. "
                             "כלל לשקול: להפוך חלק מהקניות להוראה קבועה.", "bad"))
         elif ap["diff_pct"] < -1:
-            lessons.append(("🎯", pct(ap["diff_pct"]), "ביטקוין: התזמון שלך עובד",
+            lessons.append(("target", pct(ap["diff_pct"]), "ביטקוין: התזמון שלך עובד",
                             f"המחיר הממוצע שלך נמוך ב-{abs(ap['diff_pct']):.1f}% מקנייה יומית קבועה. "
                             "מה שעשית עד עכשיו – לקנות יותר כשהמחיר יורד – הוכיח את עצמו.", "good"))
     if not sells_t.empty:
         a90 = I.wavg(sells_t, "after_90")
         if a90 is not None and a90 > 5:
-            lessons.append(("🔭", pct(a90), "מניות: מכרת מוקדם מדי",
+            lessons.append(("visibility", pct(a90), "מניות: מכרת מוקדם מדי",
                             "90 יום אחרי המכירות המחיר היה גבוה יותר. כלל לשקול: לפני מכירה, להגדיר מראש "
                             "מחיר או סיבה למכירה, ולא למכור מתוך תגובה לתנודה.", "bad"))
         drop = sells_t[sells_t.before_30 < -15]
         v = I.wavg(drop, "after_30") if len(drop) else None
         if v is not None and v > 0:
-            lessons.append(("😬", pct(v), "מניות: לא למכור בפאניקה",
+            lessons.append(("warning", pct(v), "מניות: לא למכור בפאניקה",
                             f"{len(drop)} מכירות היו אחרי ירידה חדה, ובחודש שאחריהן המחיר התאושש. "
                             "כלל לשקול: לחכות כמה ימים אחרי ירידה חדה לפני החלטה על מכירה.", "bad"))
     if not rt.empty:
         wins, n = int((rt.edge > 0).sum()), len(rt)
         e = rt.edge.sum()
         if e < 0:
-            lessons.append(("🔁", usd(e).replace("\\$", "&#36;"), "מניות: פחות החלפות",
+            lessons.append(("sync_alt", usd(e).replace("\\$", "&#36;"), "מניות: פחות החלפות",
                             f"ההחלפות בין נכסים עבדו ב-{wins} מתוך {n} פעמים, ובסך הכול עלו לך כסף. "
                             "כל החלפה היא הימור שהנכס החדש יעשה יותר טוב – כלל לשקול: להחליף רק עם סיבה ברורה.",
                             "bad"))
     cv_now = {assets[a][0]: float(vals[a].iloc[-1]) for a in ids}
     cc = I.concentration(cv_now)
     if cc and cc["btc_linked_pct"] > 80 and len([v for v in cv_now.values() if v > 0]) > 1:
-        lessons.append(("🧲", f"{cc['btc_linked_pct']:.0f}%", "הפיזור כאן הוא בעיקר שמות",
+        lessons.append(("hub", f"{cc['btc_linked_pct']:.0f}%", "הפיזור כאן הוא בעיקר שמות",
                         "כמעט כל התיק נע עם מחיר הביטקוין, גם המניות והקרנות. אם המטרה היא פיזור סיכון, "
                         "הוא יגיע רק מנכסים שלא קשורים לביטקוין.", None))
     if lessons:
-        st.subheader("🧭 מסקנות להמשך")
+        st.subheader(":material/explore: מסקנות להמשך")
         st.caption("דפוסים שעולים מהעסקאות שלך, ניסוחים של כללים לשקול – לא המלצת השקעה.")
         cards(lessons)
 
@@ -895,10 +898,10 @@ if section == SECTIONS[5]:
         b = stt["band"]
         buy_zone = b <= 2 if k == 10 else b == 1
         if b == 1:
-            st.success(f"🟢🟢 **{unit} התחתון** – הביטקוין זול יותר ביחס למגמה מ-{100 - stt['percentile']:.0f}% מהימים "
+            st.success(icon=":material/south:", body=f"**{unit} התחתון** – הביטקוין זול יותר ביחס למגמה מ-{100 - stt['percentile']:.0f}% מהימים "
                        f"בהיסטוריה. לפי הכלל שלך: אזור להגדלת ה-DCA.")
         elif buy_zone:
-            st.success(f"🟢 **{unit} {b} מלמטה** – מתחת ל-{stt['percentile']:.0f}% מהימים בהיסטוריה זה היה זול עוד יותר. "
+            st.success(icon=":material/south_east:", body=f"**{unit} {b} מלמטה** – מתחת ל-{stt['percentile']:.0f}% מהימים בהיסטוריה זה היה זול עוד יותר. "
                        f"לפי הכלל שלך: אזור להגדלת ה-DCA.")
         else:
             st.info(f"{unit} **{b} מתוך {k}** – לא באזור התחתון. אין אות להגדלת DCA.")
@@ -907,11 +910,11 @@ if section == SECTIONS[5]:
         e = stt["edges_today"]
         zone_top = e[1] if k == 10 else e[0]          # top of the bottom two deciles / bottom quintile
         above = (stt["price"] / zone_top - 1) * 100
-        cards([("📍", f"{b}/{k}", f"{unit} נוכחי", f"אחוזון {stt['percentile']:.0f} מכל ההיסטוריה ביחס למגמה.",
+        cards([("location_on", f"{b}/{k}", f"{unit} נוכחי", f"אחוזון {stt['percentile']:.0f} מכל ההיסטוריה ביחס למגמה.",
                 "good" if buy_zone else None),
                ("₿", d2(stt["price"]), "מחיר עכשיו", f"{stt['ratio']:.2f}× מקו המגמה", None),
-               ("📏", d2(stt["trend"]), "קו המגמה היום", "Power Law של Santostasi", None),
-               ("🎯", d2(zone_top), "גבול אזור ההגדלה היום",
+               ("straighten", d2(stt["trend"]), "קו המגמה היום", "Power Law של Santostasi", None),
+               ("target", d2(zone_top), "גבול אזור ההגדלה היום",
                 ("מתחת למחיר הזה = שני העשירונים התחתונים." if k == 10 else "מתחת למחיר הזה = החמישון התחתון.")
                 + (" כרגע בתוך האזור." if buy_zone else f" כרגע {above:.0f}% מעליו."),
                 "good" if buy_zone else None)])
@@ -961,7 +964,7 @@ if section == SECTIONS[5]:
 
 TYPE_HE = {"BUY": "קנייה", "SELL": "מכירה", "FEE": "עמלה", "TRANSFER": "העברה", "DIVIDEND": "דיבידנד",
            "STAKING_REWARD": "תגמול"}
-with st.expander("📒 ספר עסקאות"):
+with st.expander("ספר עסקאות", icon=":material/menu_book:"):
     log = pd.DataFrame([{"תאריך": pd.Timestamp(t.timestamp).date(), "תיק": A.account_of(t.notes),
                          "נכס": assets[t.asset_id][0], "סוג": TYPE_HE.get(t.type, t.type),
                          "כמות": float(t.amount), "מחיר ($)": float(t.price_per_unit), "עמלה ($)": float(t.fee),

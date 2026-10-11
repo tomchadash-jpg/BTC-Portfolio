@@ -36,7 +36,7 @@ def require_login() -> None:
     password = (os.getenv("APP_PASSWORD") or "").strip()
     if not password:
         # No password configured yet: the app must stay private on Streamlit Cloud.
-        st.caption("⚠️ APP_PASSWORD לא מוגדר ב-Secrets – אל תהפוך את האפליקציה לציבורית")
+        st.caption(":material/warning: APP_PASSWORD לא מוגדר ב-Secrets – אל תהפוך את האפליקציה לציבורית")
         return
 
     if st.session_state.get("authed"):
@@ -52,7 +52,8 @@ def require_login() -> None:
         _tell_launcher({"type": "portfolio-bad-key"})
 
     st.markdown("<div style='height:12vh'></div>", unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align:center'>🔒 My Portfolio</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align:center'><span style=\"font-family:'Material Symbols Rounded';vertical-align:-0.15em\">"
+                "lock</span> My Portfolio</h2>", unsafe_allow_html=True)
     with st.form("login", border=False):
         typed = st.text_input("סיסמה", type="password")
         if st.form_submit_button("כניסה", use_container_width=True):

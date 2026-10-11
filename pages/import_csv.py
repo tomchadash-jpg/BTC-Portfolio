@@ -7,7 +7,7 @@ from decimal import Decimal as D
 import psycopg
 import streamlit as st
 
-st.set_page_config(page_title="ייבוא ומחיקה", page_icon="📥")
+st.set_page_config(page_title="ייבוא ומחיקה", page_icon=":material/upload_file:")
 
 import ui
 ui.rtl()
@@ -22,8 +22,8 @@ if not (URL and UID):
     st.error("חסרים DATABASE_URL / USER_ID ב-Secrets")
     st.stop()
 
-st.title("📥 ייבוא ומחיקה")
-tab_imp, tab_del = st.tabs(["ייבוא CSV", "🗑️ מחיקה"])
+st.title(":material/upload_file: ייבוא ומחיקה")
+tab_imp, tab_del = st.tabs(["ייבוא CSV", ":material/delete: מחיקה"])
 
 DEFAULTS = {  # symbol -> (name, asset_class, Yahoo ticker) for assets created on import
     "BTC": ("Bitcoin", "crypto", "BTC-USD"),
@@ -72,7 +72,7 @@ with tab_imp:
                                datetime.combine(datetime.fromisoformat(r["date"]).date(), time(12)), r["notes"]))
                     added += 1
             st.cache_data.clear()
-            st.success(f"נוספו {added} שורות, דולגו {skipped} שורות קיימות ✅")
+            st.success(f"נוספו {added} שורות, דולגו {skipped} שורות קיימות", icon=":material/check_circle:")
 
 with tab_del:
     with psycopg.connect(URL) as c:
@@ -80,11 +80,11 @@ with tab_del:
     st.write(f"יש כרגע **{n}** עסקאות באפליקציה.")
     st.warning("המחיקה סופית ומוחקת את כל העסקאות. הנכסים (BTC וכו') נשארים.")
     ok = st.text_input("כדי לאשר, כתוב: מחק")
-    if st.button("🗑️ מחק את כל העסקאות"):
+    if st.button("מחק את כל העסקאות", icon=":material/delete:"):
         if ok.strip() == "מחק":
             with psycopg.connect(URL) as c:
                 c.execute("DELETE FROM transactions WHERE user_id = %s", (UID,))
             st.cache_data.clear()
-            st.success("כל העסקאות נמחקו ✅")
+            st.success("כל העסקאות נמחקו", icon=":material/check_circle:")
         else:
             st.error("לא אושר. כתוב בדיוק: מחק")

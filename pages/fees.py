@@ -7,7 +7,7 @@ import psycopg
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="עמלות", page_icon="💸", layout="wide")
+st.set_page_config(page_title="עמלות", page_icon=":material/receipt_long:", layout="wide")
 
 import ui
 ui.rtl()
@@ -76,8 +76,8 @@ def usd_value(frame):
     return frame.amount * frame.date.map(px_btc).astype(float)
 
 
-st.title("💸 עמלות")
-t1, t2 = st.tabs(["🏦 עמלות בורסה", "⛓️ עמלות רשת"])
+st.title(":material/receipt_long: עמלות")
+t1, t2 = st.tabs([":material/account_balance: עמלות בורסה", ":material/link: עמלות רשת"])
 
 # ---------------- exchange fees: trading + withdrawal ----------------
 with t1:
