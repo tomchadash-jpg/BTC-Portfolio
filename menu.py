@@ -23,14 +23,20 @@ def top(overlap: bool = False):
            f".st-key-{key} [data-testid='stPopover'] {{ width: fit-content !important; margin-left: auto !important;"
            f" margin-right: 0 !important; }}"
            # a plain, big ☰: no border/background, no little arrow next to it
-           f".st-key-{key} button {{ border: none !important; background: transparent !important;"
+           f".st-key-{key} button, .st-key-{key} [data-testid='stPopoverButton'] {{ border: none !important; background: transparent !important;"
            f" box-shadow: none !important; padding: 0 .2rem !important; min-height: 0 !important;"
            f" width: auto !important; }}"
-           f".st-key-{key} button p {{ font-size: 2.2rem !important; line-height: 1 !important; margin: 0 !important; }}"
+           f".st-key-{key} button p, .st-key-{key} button div {{ font-size: 2.2rem !important; line-height: 1 !important; margin: 0 !important; }}"
            f".st-key-{key} button svg, .st-key-{key} button [data-testid='stIconMaterial'] {{ display: none !important; }}")
-    (st.html if hasattr(st, "html") else lambda c: st.markdown(c, unsafe_allow_html=True))(f"<style>{css}</style>")
+    # inject through markdown as well as st.html: whichever this Streamlit version applies
+    if hasattr(st, "html"):
+        st.html(f"<style>{css}</style>")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     with st.container(key=key):
-        pop = st.popover("☰")
+        try:
+            pop = st.popover("☰", type="tertiary")          # borderless button (newer Streamlit)
+        except TypeError:
+            pop = st.popover("☰")
     with pop:
         for path, title, icon in PAGES:
             st.page_link(path, label=title, icon=icon)

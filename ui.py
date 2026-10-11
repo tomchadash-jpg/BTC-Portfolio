@@ -59,7 +59,7 @@ div[data-baseweb="popover"]:has([data-testid="stPopoverBody"]) {
 def rtl() -> None:
     # st.html injects a <style> block reliably (and takes no space on the page);
     # older Streamlit versions fall back to markdown.
+    # both ways: depending on the Streamlit version one of them applies the <style> block
     if hasattr(st, "html"):
         st.html(_CSS)
-    else:
-        st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(_CSS, unsafe_allow_html=True)
