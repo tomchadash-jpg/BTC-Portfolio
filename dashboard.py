@@ -480,22 +480,56 @@ if section == SECTIONS[1]:
         st.caption(f"DCA יומי: אותו סכום שהשקעת בביטקוין ({mny(tot_c)}), מחולק שווה לכ-{mny(per_c)} ליום "
                    f"מהרכישה הראשונה של BTC ועד היום, לפי מחיר הסגירה היומי. ההשוואה היא רק לביטקוין, "
                    f"בלי הנכסים האחרים. ההפרש מראה אם הקניות שלך הקדימו (+) או פיגרו (-) אחרי קנייה יומית קבועה.")
-    st.caption("הגרף מתחת מציג תשואה באחוזים ולא סכומים: כל הקווים מתחילים מ-100, "
-               "כך ש-150 = עלייה של 50% מתחילת הטווח. לכן הוא זהה בדולרים ובשקלים.")
-    sl = E.slice_range(twr, rng)
-    fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="התיק שלי (TWR)", line=dict(width=3)))
-    for b in bench:
-        h = history(BENCH[b], start)
-        if h.empty:
-            st.warning(f"לא נמצאו מחירים עבור {b}")
-            continue
-        s = E.slice_range(daily(h, idx), rng)
-        fig.add_trace(go.Scatter(x=s.index, y=E.rebased(s), name=b))
-    if dca:
-        d = E.slice_range(dca["twr"], rng)
-        fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
-    fig.update_layout(height=450, yaxis_title="100 = תחילת הטווח", hovermode="x unified",
-                      legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
+    mode = st.radio("תצוגת הגרף", ["אחוזים", "סכומים"], horizontal=True, key="bench_mode")
+    if mode == "אחוזים":
+        st.caption("הגרף מציג תשואה באחוזים: כל הקווים מתחילים מ-100, "
+                   "כך ש-150 = עלייה של 50% מתחילת הטווח. לכן הוא זהה בדולרים ובשקלים.")
+        sl = E.slice_range(twr, rng)
+        fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="התיק שלי (TWR)", line=dict(width=3)))
+        for b in bench:
+            h = history(BENCH[b], start)
+            if h.empty:
+                st.warning(f"לא נמצאו מחירים עבור {b}")
+                continue
+            s = E.slice_range(daily(h, idx), rng)
+            fig.add_trace(go.Scatter(x=s.index, y=E.rebased(s), name=b))
+        if dca:
+            d = E.slice_range(dca["twr"], rng)
+            fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
+        fig.update_layout(height=450, yaxis_title="100 = תחילת הטווח", hovermode="x unified",
+                          legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
+    else:
+        # same money, same dates: every day new money went into the portfolio, "buy" the benchmark with it too
+        hov = sym + "%{y:,.0f}"
+        mine_c = nw_usd * fx
+        fig = go.Figure(go.Scatter(x=E.slice_range(mine_c, rng).index, y=E.slice_range(mine_c, rng),
+                                   name="התיק שלי", line=dict(width=3), hovertemplate=hov))
+        what_if = []
+        for b in bench:
+            h = history(BENCH[b], start)
+            if h.empty:
+                st.warning(f"לא נמצאו מחירים עבור {b}")
+                continue
+            p_b = daily(h, idx)
+            if b == "BTC" and CG["BTC"] in live:
+                p_b.iloc[-1] = live[CG["BTC"]]      # live price for today, like the portfolio itself
+            val_b = (new_money / p_b).cumsum() * p_b * fx
+            what_if.append((b, float(val_b.iloc[-1])))
+            s = E.slice_range(val_b, rng)
+            fig.add_trace(go.Scatter(x=s.index, y=s, name=f"הכול ב-{b}", hovertemplate=hov))
+        inv = E.slice_range(inv_cum, rng)
+        fig.add_trace(go.Scatter(x=inv.index, y=inv, name="סך ההפקדות", hovertemplate=hov,
+                                 line=dict(color="#9aa0a6", width=1.5, dash="dot")))
+        fig.update_layout(height=450, yaxis_title=f"({ccy})", hovermode="x unified",
+                          legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
+        if what_if:
+            mine_end = float(mine_c.iloc[-1])
+            grid([(f"אילו הכול ב-{b}", money(v),
+                   f"{'+' if v >= mine_end else '-'}{money(abs(v - mine_end))} מול התיק")
+                  for b, v in what_if], "kpi_whatif")
+        st.caption(f"כל קו מראה כמה הכסף היה שווה אילו כל הפקדה לתיק ({money(invested_now)} בסך הכול) "
+                   f"הייתה נקנית באותו יום במדד במקום. הקו המנוקד הוא סך ההפקדות, כך שהמרחק ממנו הוא הרווח או ההפסד. "
+                   f"הקו של DCA יומי לא מוצג כאן כי הוא מתייחס רק לכסף שהושקע בביטקוין (ראה הכרטיסים למעלה).")
     st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
 
 if section == SECTIONS[2]:
