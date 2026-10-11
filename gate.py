@@ -5,11 +5,14 @@ Every page calls `require_login()` right after `st.set_page_config`. Nothing bel
 (a Streamlit secret). Proof comes from either:
   * `?key=...` in the URL - sent automatically by the home-screen launcher page, or
   * typing the password on the lock screen.
-Once verified, the flag lives in this browser session, so switching pages doesn't re-ask.
+Once verified, the flag lives in this browser session, so switching pages doesn't re-ask,
+and a derived token (not the password) is kept in the page URL: when Streamlit starts a new
+session (app update, phone waking up) on any page, the URL still proves access.
 
 When the password is typed, the page tells the launcher (the page that embeds the app)
 to remember it on the device; a wrong saved key tells the launcher to forget it.
 """
+import hashlib
 import hmac
 import json
 import os
@@ -20,8 +23,24 @@ import streamlit.components.v1 as components
 LAUNCHER_ORIGIN = "https://tomchadash-jpg.github.io"
 
 
+def _token(password: str) -> str:
+    """URL-safe stand-in for the password (so the password itself never sits in the URL)."""
+    return hashlib.sha256(f"portfolio:{password}".encode()).hexdigest()[:32]
+
+
 def _ok(candidate: str, password: str) -> bool:
-    return bool(candidate) and hmac.compare_digest(candidate.encode(), password.encode())
+    if not candidate:
+        return False
+    c = candidate.encode()
+    return hmac.compare_digest(c, password.encode()) or hmac.compare_digest(c, _token(password).encode())
+
+
+def _keep_in_url(password: str) -> None:
+    try:
+        if st.query_params.get("key") != _token(password):
+            st.query_params["key"] = _token(password)
+    except Exception:
+        pass
 
 
 def _tell_launcher(msg: dict) -> None:
@@ -42,12 +61,14 @@ def require_login() -> None:
     if st.session_state.get("authed"):
         if st.session_state.pop("_remember", None):
             _tell_launcher({"type": "portfolio-key", "key": password})
+        _keep_in_url(password)
         return
 
     key = st.query_params.get("key", "")
     if key:
         if _ok(key, password):
             st.session_state["authed"] = True
+            _keep_in_url(password)
             return
         _tell_launcher({"type": "portfolio-bad-key"})
 
