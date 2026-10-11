@@ -4,11 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Portfolio</title>
-  <!-- Home-screen icon & name (iOS reads these when you "Add to Home Screen").
-       No web-app/standalone mode on purpose: the icon opens in regular Safari,
-       which keeps the Streamlit / GitHub sign-in. -->
+  <!-- Home-screen icon & name; opens as a full-screen web app -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="My Portfolio">
   <meta name="theme-color" content="#0A0F1E">
   <style>
@@ -37,40 +39,26 @@
 
   <section id="setup">
     <h1>My Portfolio</h1>
-    <p>להוספה למסך הבית, הקש קודם על הכפתור:</p>
-    <a class="btn" href="?go=1" id="prepare">הכן להוספה למסך הבית</a><br>
-    <a class="link" id="open" href="#">או פתח את האפליקציה עכשיו</a>
-  </section>
-
-  <section id="ready">
-    <h1>מוכן ✅</h1>
-    <p>עכשיו הוסף את הדף הזה למסך הבית:</p>
+    <p>להוספה למסך הבית עם הלוגו הזה:</p>
+    <a class="btn" id="open" href="#">פתח את האפליקציה</a>
     <ol>
       <li>הקש על ••• ואז על שיתוף ⬆️</li>
       <li>בחר "הוסף למסך הבית"</li>
-      <li><b>כבה</b> את "פתח כאפליקציה רשת" (Open as Web App)</li>
+      <li>השאר <b>דלוק</b> את "פתח כאפליקציה רשת"</li>
       <li>הקש "הוסף"</li>
     </ol>
   </section>
+
 </main>
 <script>
   const APP_URL = "https://btc-portfolio-jguv8kcdauchggtvou2z9w.streamlit.app";
   document.getElementById("open").href = APP_URL;
 
-  function store(fn) { try { return fn(); } catch (e) { return null; } }
-  const go = new URLSearchParams(location.search).has("go");
   const standalone = window.navigator.standalone === true ||
                      window.matchMedia("(display-mode: standalone)").matches;
-
-  document.getElementById("prepare").addEventListener("click", function () {
-    // Remember (for this tab only) that we're setting up, so ?go=1 won't redirect yet.
-    store(() => sessionStorage.setItem("preparing", "1"));
-  });
-
-  if (go && store(() => sessionStorage.getItem("preparing")) === "1") {
-    document.body.dataset.view = "ready";          // the tab we're adding from
-  } else if (go || standalone) {
-    document.body.dataset.view = "launch";         // opened from the home-screen icon
+  // Opened from the home-screen icon (or an old ?go=1 bookmark) → straight to the app.
+  if (standalone || new URLSearchParams(location.search).has("go")) {
+    document.body.dataset.view = "launch";
     location.replace(APP_URL);
   }
 </script>
