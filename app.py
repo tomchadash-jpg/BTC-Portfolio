@@ -131,6 +131,8 @@ with st.sidebar:
     classes = sorted({a[2] for a in assets.values()})
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes)
     bench = st.multiselect("מדדי ייחוס", ["SPY", "QQQ", "BTC-USD"], default=["SPY", "QQQ", "BTC-USD"])
+    dca_on = st.checkbox("DCA יומי ל-BTC (אותו סכום כולל)", value=True,
+                         help="מדד ייחוס: כל הסכום שהושקע, מחולק שווה על כל יום מהרכישה הראשונה ועד היום, וכולו נקנה ב-BTC")
     st.subheader("הקצאת יעד (%)")
     default_t = {"equity": 50, "crypto": 35, "cash": 15}
     targets = {c: st.slider(c, 0, 100, default_t.get(c, 0)) for c in classes}
@@ -190,6 +192,22 @@ withdrawal_loss = net_fee_loss - onchain_loss
 
 inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far, at each purchase-date rate
 invested_now = float(inv_cum.iloc[-1])
+
+# --- benchmark: the same total money, spread evenly over every day and bought in BTC (daily DCA) ---
+dca = None
+if dca_on:
+    btc_h = daily(history("BTC-USD", start), idx)
+    if CG["BTC"] in live and not btc_h.isna().all():
+        btc_h.iloc[-1] = live[CG["BTC"]]
+    total_usd = float(contributions(tx_f, idx).sum())
+    if total_usd > 0 and not btc_h.isna().any():
+        per_day = total_usd / len(idx)
+        dca_qty = (per_day / btc_h).cumsum()
+        dca_usd = dca_qty * btc_h
+        dca = {"usd": dca_usd, "qty": float(dca_qty.iloc[-1]), "total": total_usd, "per_day": per_day,
+               "twr": E.twr_index(dca_usd, pd.Series(per_day, index=idx))}
+    else:
+        st.sidebar.warning("אין מספיק נתונים לחישוב DCA יומי")
 nw_now = float(summ.net_worth) * fx_now
 
 afx, unreal_ccy, cost_ccy = {}, 0.0, 0.0
@@ -248,6 +266,8 @@ t1, t2, t3, t4 = st.tabs(["📊 שווי היסטורי", "🆚 השוואה ל�
 
 with t1:
     cmp_df = pd.DataFrame({"שווי": nw_usd * fx, "הושקע": inv_cum})
+    if dca:
+        cmp_df["DCA יומי ל-BTC"] = dca["usd"] * fx
     f = px.line(E.slice_range(cmp_df, rng), title=f"שווי מול סכום שהושקע ({ccy})",
                 labels={"value": f"({ccy})", "index": "", "variable": ""})
     f.update_layout(height=420)
@@ -256,6 +276,17 @@ with t1:
     st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
 
 with t2:
+    if dca:
+        dca_now = float(dca["usd"].iloc[-1]) * fx_now
+        diff = nw_now - dca_now
+        m = st.columns(3)
+        m[0].metric("שווי עם DCA יומי", f"{sym}{dca_now:,.0f}")
+        m[1].metric("התיק שלך", f"{sym}{nw_now:,.0f}",
+                    delta=f"{'+' if diff >= 0 else '-'}{sym}{abs(diff):,.0f} מול ה-DCA")
+        m[2].metric("BTC עם DCA יומי", f"{dca['qty']:.5f}")
+        st.caption(f"DCA יומי: אותו סכום כולל שהושקע (${dca['total']:,.0f}), מחולק שווה לכ-${dca['per_day']:,.0f} ליום "
+                   f"מהרכישה הראשונה ועד היום, וכולו נקנה ב-BTC לפי מחיר הסגירה היומי. "
+                   f"ההפרש מראה כמה התיק שלך מקדים (+) או מפגר (-) אחרי הסכום הזה.")
     sl = E.slice_range(twr, rng)
     fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="Portfolio (TWR)", line=dict(width=3)))
     for b in bench:
@@ -265,6 +296,9 @@ with t2:
             continue
         s = E.slice_range(daily(h, idx), rng)
         fig.add_trace(go.Scatter(x=s.index, y=E.rebased(s), name=b))
+    if dca:
+        d = E.slice_range(dca["twr"], rng)
+        fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
     fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
