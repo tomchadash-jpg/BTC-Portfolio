@@ -312,6 +312,12 @@ cards = [("שווי נקי", money(nw_now), None),
 if A.COLD in chosen:                           # bitcoin network fees exist only in the cold wallet
     cards += [("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now), None),
               ("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now), None)]
+btc_held = [a for a in ids if assets[a][0] == "BTC"]
+if btc_held:                                   # bitcoin in the cold wallet: amount first, it's what matters most
+    q = sum(float(summ.by_asset[a]["qty"]) for a in btc_held)
+    v = sum(float(summ.by_asset[a]["value"]) for a in btc_held) * fx_now
+    cards.insert(0, ("₿ בארנק הקר", f"{q:.8f}".rstrip("0").rstrip(".") + " BTC",
+                     f"{q * 1e8:,.0f} sats · {money(v)}"))
 grid(cards, "kpi_main")
 
 if len(chosen) > 1:
