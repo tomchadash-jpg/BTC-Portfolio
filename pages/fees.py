@@ -52,7 +52,7 @@ def platform(notes):
 rows = load()
 df = pd.DataFrame(rows, columns=["date", "asset", "type", "amount", "price", "fee", "notes"])
 if df.empty:
-    st.info("אין עסקאות עדיין. ייבא קובץ בעמוד "ייבוא ומחיקה" בתפריט ☰")
+    st.info("אין עסקאות עדיין. ייבא קובץ בעמוד ״ייבוא ומחיקה״ בתפריט ☰")
     st.stop()
 df["date"] = pd.to_datetime(df["date"])
 for col in ("amount", "price", "fee"):

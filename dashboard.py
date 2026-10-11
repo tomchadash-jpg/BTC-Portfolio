@@ -147,7 +147,7 @@ def avg_fx(txs, idx, fx):
 # ------------------------------ load ------------------------------
 (assets, txs), is_demo = load_ledger()
 if not txs:
-    st.info("אין עסקאות עדיין. ייבא קובץ בעמוד "ייבוא ומחיקה" בתפריט ☰")
+    st.info("אין עסקאות עדיין. ייבא קובץ בעמוד ״ייבוא ומחיקה״ בתפריט ☰")
     st.stop()
 
 menu_pop = menu.top(overlap=True)          # ☰ at the top right; the title sits on the left of the same row
