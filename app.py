@@ -15,9 +15,16 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
+import importlib
+
 import accounts as A
 import engine as E
 import insights as I
+
+# Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
+# modules in memory; reload them so new functions are always there.
+for _m in (A, E, I):
+    importlib.reload(_m)
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
 
