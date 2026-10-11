@@ -148,6 +148,8 @@ rng = c2.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], valu
 if c3.button("🔄 רענן מחירים"):
     st.cache_data.clear()
     st.rerun()
+zoom = st.toggle("🔍 זום וכלי גרף", value=True,
+                 help="כבוי: הגרפים נעולים, וגרירה באצבע רק גוללת את הדף. דלוק: זום, הזזה וסרגל כלים")
 
 # ------------------------------ compute ------------------------------
 if ccy == "ILS":
@@ -280,10 +282,10 @@ with t1:
                                hovertemplate=sym + "%{y:,.0f}"))
     f.update_layout(title=f"שווי מול סכום שהושקע ({ccy})", height=480, hovermode="x unified",
                     legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10),
-                    yaxis=dict(title=f"({ccy})", fixedrange=True), xaxis=dict(fixedrange=True),
+                    yaxis=dict(title=f"({ccy})", fixedrange=not zoom), xaxis=dict(fixedrange=not zoom),
                     yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False,
-                                fixedrange=True))
-    st.plotly_chart(f, use_container_width=True, config={"displayModeBar": False})
+                                fixedrange=not zoom))
+    st.plotly_chart(f, use_container_width=True, config={"displayModeBar": zoom})
     stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids})
     st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
 
@@ -313,9 +315,9 @@ with t2:
         fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
     fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified",
                       legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
-    fig.update_xaxes(fixedrange=True)
-    fig.update_yaxes(fixedrange=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    fig.update_xaxes(fixedrange=not zoom)
+    fig.update_yaxes(fixedrange=not zoom)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": zoom})
 
 with t3:
     cls_val = {}
