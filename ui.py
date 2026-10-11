@@ -3,6 +3,31 @@ import streamlit as st
 
 _CSS = """
 <style>
+/* Rubik: a rounded, friendly font with proper Hebrew + Latin + tabular digits */
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap');
+.stApp, .stApp p, .stApp li, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
+.stApp input, .stApp textarea, .stApp button, .stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricLabel"],
+.stApp [data-baseweb="tab"], .stApp .ins-card {
+    font-family: 'Rubik', -apple-system, 'Segoe UI', sans-serif !important; }
+.stApp p, .stApp li { line-height: 1.6; }
+.stApp h1, .stApp h2, .stApp h3 { font-weight: 700; letter-spacing: -.01em; }
+.stApp [data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* Insight cards */
+.ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }
+.ins-card { background: rgba(128,128,128,.09); border-radius: .8rem; padding: .7rem .8rem;
+            border-right: 4px solid rgba(128,128,128,.35); direction: rtl; text-align: right; }
+.ins-card.good { border-right-color: #2e9e5b; }
+.ins-card.bad  { border-right-color: #d9534f; }
+.ins-top { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
+.ins-icon { font-size: 1.2rem; }
+.ins-big { font-size: 1.45rem; font-weight: 700; direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.ins-card.good .ins-big { color: #3fbf73; }
+.ins-card.bad  .ins-big { color: #ef6b66; }
+.ins-title { font-weight: 500; font-size: .9rem; margin-top: .25rem; }
+.ins-text { font-size: .78rem; opacity: .75; line-height: 1.45; margin-top: .2rem; }
+
 /* Hebrew: right-to-left text and layout */
 .stApp [data-testid="stMain"], .stApp section.main,
 .stApp [data-testid="stSidebar"] { direction: rtl; text-align: right; }

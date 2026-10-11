@@ -395,7 +395,7 @@ with t2:
         grid([("BTC שלי – שווי", f"{sym}{mine_now:,.0f}", f"{'+' if diff >= 0 else '-'}{sym}{abs(diff):,.0f} מול DCA"),
               ("DCA יומי – שווי", f"{sym}{dca_now:,.0f}", None),
               ("BTC: שלי / DCA", f"{my_qty:.4f} / {dca['qty']:.4f}", None)], "kpi_dca")
-        st.caption(f"DCA יומי: אותו סכום שהשקעת בביטקוין (${dca['total']:,.0f}), מחולק שווה לכ-${dca['per_day']:,.0f} ליום "
+        st.caption(f"DCA יומי: אותו סכום שהשקעת בביטקוין (\\${dca['total']:,.0f}), מחולק שווה לכ-\\${dca['per_day']:,.0f} ליום "
                    f"מהרכישה הראשונה של BTC ועד היום, לפי מחיר הסגירה היומי. ההשוואה היא רק לביטקוין, "
                    f"בלי הנכסים האחרים. ההפרש מראה אם הקניות שלך הקדימו (+) או פיגרו (-) אחרי קנייה יומית קבועה.")
     sl = E.slice_range(twr, rng)
@@ -449,7 +449,8 @@ with t4:
     st.dataframe(pd.DataFrame(rows).style.format(precision=2), use_container_width=True, hide_index=True)
 
 with t5:
-    usd = lambda v: money(v * fx_now)                     # analyses run in USD; shown in the display currency
+    # "$" must be escaped in Streamlit markdown, otherwise "$...$" turns into a math formula
+    usd = lambda v: money(v * fx_now).replace("$", "\\$")
     pct = lambda v: f"{v:+.1f}%"
     st.caption("ניתוח התזמון של הקניות והמכירות, לפי התיקים שבחרת למעלה. תיאור של מה שקרה, לא המלצה.")
 
@@ -459,53 +460,68 @@ with t5:
     def share(df, mask):
         return df[mask].usd.sum() / df.usd.sum() * 100 if df.usd.sum() else 0.0
 
-    def buy_lines(df):
+    def cards(items):
+        """Insight cards: (icon, big number, title, sentence, tone) with tone good / bad / None."""
+        html = []
+        for icon, big, title, text, tone in items:
+            html.append(f'<div class="ins-card {tone or ""}"><div class="ins-top"><span class="ins-icon">{icon}</span>'
+                        f'<span class="ins-big">{big}</span></div><div class="ins-title">{title}</div>'
+                        f'<div class="ins-text">{text}</div></div>')
+        st.markdown('<div class="ins-grid">' + "".join(html) + "</div>", unsafe_allow_html=True)
+
+    cash_fmt = lambda v: money(v * fx_now).replace("$", "&#36;")      # same, inside HTML cards
+
+    def buy_cards(df):
         out = []
         rp = I.wavg(df, "range_pct")
-        verdict = ("קנית קרוב לתחתיות המקומיות 👍" if rp < 35 else "נטייה לקנות קרוב לשיאים מקומיים" if rp > 65
-                   else "בערך כמו קנייה בזמן אקראי")
-        out.append(f"בממוצע קנית ב-**{rp:.0f}%** מהטווח של החודש שלפני ואחרי כל קנייה "
-                   f"(0% = היום הכי זול, 100% = הכי יקר) – {verdict}.")
+        out.append(("📍", f"{rp:.0f}%", "איפה בטווח החודשי קנית",
+                    "0% = היום הכי זול בחודש שמסביב, 100% = הכי יקר. "
+                    + ("קנית קרוב לתחתיות." if rp < 35 else "נטייה לקנות קרוב לשיאים." if rp > 65
+                       else "בערך כמו קנייה בזמן אקראי."),
+                    "good" if rp < 35 else "bad" if rp > 65 else None))
         up, down = df.before_30 > 10, df.before_30 < -10
-        out.append(f"**{share(df, up):.0f}%** מהכסף נקנה אחרי עלייה של 10%+ בחודש שלפני, "
-                   f"ו-**{share(df, down):.0f}%** אחרי ירידה של 10%+.")
         u90, d90 = I.wavg(df[up], "after_90"), I.wavg(df[down], "after_90")
+        txt = f"מהכסף נקנה אחרי ירידה של 10%+ בחודש שלפני, ו-{share(df, up):.0f}% אחרי עלייה של 10%+."
+        tone = None
         if u90 is not None and d90 is not None:
-            better = "אחרי ירידות" if d90 > u90 else "אחרי עליות"
-            out.append(f"90 יום אחרי הקנייה: קניות אחרי ירידה {pct(d90)}, קניות אחרי עלייה {pct(u90)} – "
-                       f"אצלך הקניות {better} עבדו טוב יותר.")
+            txt += f" אחרי 90 יום: קניות בירידה {pct(d90)}, קניות בעלייה {pct(u90)}."
+            tone = "good" if d90 > u90 else "bad"
+        out.append(("📉", f"{share(df, down):.0f}%", "קנית בירידות", txt, tone))
         a90 = I.wavg(df, "after_90")
         if a90 is not None:
-            out.append(f"בממוצע, 90 יום אחרי קנייה המחיר היה {pct(a90)} מהמחיר שקנית.")
+            out.append(("⏱️", pct(a90), "90 יום אחרי קנייה", "השינוי הממוצע במחיר ב-3 החודשים שאחרי כל קנייה.",
+                        "good" if a90 > 0 else "bad"))
         d = df.dropna(subset=["after_90"])
         if len(d) >= 3:
-            b, w = d.loc[d.after_90.idxmax()], d.loc[d.after_90.idxmin()]
-            out.append(f"הקנייה עם התזמון הכי טוב: {b.asset} ב-{b.date:%d/%m/%Y} ({pct(b.after_90)} תוך 90 יום). "
-                       f"הכי גרוע: {w.asset} ב-{w.date:%d/%m/%Y} ({pct(w.after_90)}).")
+            bst, wst = d.loc[d.after_90.idxmax()], d.loc[d.after_90.idxmin()]
+            out.append(("🏆", pct(bst.after_90), "הקנייה הכי מוצלחת",
+                        f"{bst.asset} · {bst.date:%d/%m/%Y} · {cash_fmt(bst.usd)}", "good"))
+            out.append(("🫠", pct(wst.after_90), "הקנייה הכי פחות מוצלחת",
+                        f"{wst.asset} · {wst.date:%d/%m/%Y} · {cash_fmt(wst.usd)}", "bad"))
         return out
 
     st.subheader("🟢 קניות")
     btc_b = buys_t[buys_t.asset == "BTC"] if not buys_t.empty else buys_t
     stk_b = buys_t[buys_t.asset != "BTC"] if not buys_t.empty else buys_t
     if not btc_b.empty:
-        st.markdown("**ביטקוין**")
-        lines = []
+        st.markdown("##### ביטקוין")
+        items = []
         bid = next(a for a in assets if assets[a][0] == "BTC")
         ap = I.avg_price_vs_period(tx_f, prices, bid)
         if ap:
-            lines.append(f"המחיר הממוצע שלך **{usd(ap['mine'])}** מול **{usd(ap['period_avg'])}** – הממוצע היומי בתקופה "
-                         f"שקנית ({ap['first']:%m/%Y}–{ap['last']:%m/%Y}). כלומר קנית "
-                         f"**{abs(ap['diff_pct']):.1f}% {'בזול' if ap['diff_pct'] < 0 else 'ביוקר'}** "
-                         f"ממי שהיה קונה כל יום אותו סכום.")
-        lines += buy_lines(btc_b)
+            items.append(("🎯", pct(ap["diff_pct"]), "מחיר ממוצע מול קנייה יומית",
+                          f"שילמת בממוצע {cash_fmt(ap['mine'])} מול {cash_fmt(ap['period_avg'])} – הממוצע היומי "
+                          f"בתקופה שקנית ({ap['first']:%m/%Y}–{ap['last']:%m/%Y}).",
+                          "good" if ap["diff_pct"] < 0 else "bad"))
+        items += buy_cards(btc_b)
         near, deep = btc_b.from_ath > -10, btc_b.from_ath < -30
-        lines.append(f"**{share(btc_b, near):.0f}%** מהכסף נקנה כש-BTC היה בטווח 10% מהשיא, "
-                     f"ו-**{share(btc_b, deep):.0f}%** כשהיה 30%+ מתחת לשיא "
-                     f"(בממוצע {I.wavg(btc_b, 'from_ath'):.0f}% מהשיא).")
-        st.markdown("\n".join(f"- {x}" for x in lines))
+        items.append(("🏔️", f"{I.wavg(btc_b, 'from_ath'):.0f}%", "מרחק ממוצע מהשיא בזמן קנייה",
+                      f"{share(btc_b, near):.0f}% מהכסף נקנה בטווח 10% מהשיא, "
+                      f"{share(btc_b, deep):.0f}% כשהיה 30%+ מתחתיו.", None))
+        cards(items)
     if not stk_b.empty:
-        st.markdown("**מניות וקרנות**")
-        st.markdown("\n".join(f"- {x}" for x in buy_lines(stk_b)))
+        st.markdown("##### מניות וקרנות")
+        cards(buy_cards(stk_b))
         g = stk_b.groupby("asset")
         tbl = pd.DataFrame({"קניות": g.size(), "סכום": g.usd.sum() * fx_now,
                             "מיקום בטווח %": g.apply(lambda x: I.wavg(x, "range_pct"), include_groups=False),
@@ -516,23 +532,27 @@ with t5:
 
     if not sells_t.empty:
         st.subheader("🔴 מכירות")
-        lines = []
+        items = []
         rp = I.wavg(sells_t, "range_pct")
-        lines.append(f"בממוצע מכרת ב-**{rp:.0f}%** מהטווח של החודש שמסביב (100% = מכרת ביום הכי יקר) – "
-                     + ("מכרת קרוב לשיאים 👍" if rp > 65 else "מכרת קרוב לתחתיות מקומיות" if rp < 35
-                        else "בערך כמו מכירה בזמן אקראי") + ".")
+        items.append(("📍", f"{rp:.0f}%", "איפה בטווח החודשי מכרת",
+                      "100% = מכרת ביום הכי יקר בחודש שמסביב. "
+                      + ("מכרת קרוב לשיאים." if rp > 65 else "מכרת קרוב לתחתיות." if rp < 35
+                         else "בערך כמו מכירה בזמן אקראי."),
+                      "good" if rp > 65 else "bad" if rp < 35 else None))
         for col, n in (("after_30", 30), ("after_90", 90)):
             v = I.wavg(sells_t, col)
             if v is not None:
-                lines.append(f"{n} יום אחרי המכירה המחיר היה {pct(v)} – "
-                             + ("המכירות הקדימו ירידות 👍" if v < 0 else "המחיר עלה אחרי שמכרת") + ".")
+                items.append(("🔭", pct(v), f"{n} יום אחרי מכירה",
+                              "המחיר המשיך לרדת – המכירות הקדימו ירידות." if v < 0 else "המחיר עלה אחרי שמכרת.",
+                              "good" if v < 0 else "bad"))
         drop = sells_t[sells_t.before_30 < -15]
         if len(drop):
             v = I.wavg(drop, "after_30")
-            lines.append(f"{len(drop)} מכירות היו אחרי ירידה של 15%+ בחודש שלפני"
-                         + (f"; אחריהן המחיר {'המשיך לרדת' if v < 0 else 'התאושש'} ({pct(v)} תוך 30 יום)" if v is not None else "")
-                         + ".")
-        st.markdown("\n".join(f"- {x}" for x in lines))
+            items.append(("😬", str(len(drop)), "מכירות אחרי ירידה חדה",
+                          "מכירות אחרי ירידה של 15%+ בחודש שלפני."
+                          + (f" אחריהן המחיר {'המשיך לרדת' if v < 0 else 'התאושש'}: {pct(v)} תוך 30 יום." if v is not None else ""),
+                          ("good" if v < 0 else "bad") if v is not None else None))
+        cards(items)
         st.dataframe(pd.DataFrame({"תאריך": sells_t.date.dt.strftime("%d/%m/%Y"), "נכס": sells_t.asset,
                                    "סכום": sells_t.usd * fx_now, "מיקום בטווח %": sells_t.range_pct,
                                    "30 יום לפני %": sells_t.before_30, "30 יום אחרי %": sells_t.after_30,
@@ -583,7 +603,7 @@ with t5:
                     f"לעומת השארת הכסף בנכס שנמכר.")
 
     with st.expander("סיכום כללי"):
-        usd = lambda v: money(v * fx_now)                     # analyses run in USD; shown in the display currency
+        usd = lambda v: money(v * fx_now).replace("$", "\\$")                   # analyses run in USD; shown in the display currency
         pct = lambda v: f"{v:+.1f}%"
 
         # 1. what worked
