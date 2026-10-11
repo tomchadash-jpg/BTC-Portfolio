@@ -268,10 +268,22 @@ with t1:
     cmp_df = pd.DataFrame({"שווי": nw_usd * fx, "הושקע": inv_cum})
     if dca:
         cmp_df["DCA יומי ל-BTC"] = dca["usd"] * fx
-    f = px.line(E.slice_range(cmp_df, rng), title=f"שווי מול סכום שהושקע ({ccy})",
-                labels={"value": f"({ccy})", "index": "", "variable": ""})
-    f.update_layout(height=420)
-    st.plotly_chart(f, use_container_width=True)
+    sl1 = E.slice_range(cmp_df, rng)
+    f = go.Figure()
+    for col in sl1.columns:
+        f.add_trace(go.Scatter(x=sl1.index, y=sl1[col], name=col, hovertemplate=sym + "%{y:,.0f}"))
+    btc_ids = [a for a in assets if assets[a][0] == "BTC"]
+    if btc_ids:                                           # BTC price on its own (right) axis
+        bp = E.slice_range(pd.DataFrame({"p": prices[btc_ids[0]] * fx}), rng)["p"]
+        f.add_trace(go.Scatter(x=bp.index, y=bp, name=f"מחיר BTC ({sym})", yaxis="y2",
+                               line=dict(color="#9aa0a6", width=1.5, dash="dot"),
+                               hovertemplate=sym + "%{y:,.0f}"))
+    f.update_layout(title=f"שווי מול סכום שהושקע ({ccy})", height=480, hovermode="x unified",
+                    legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10),
+                    yaxis=dict(title=f"({ccy})", fixedrange=True), xaxis=dict(fixedrange=True),
+                    yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False,
+                                fixedrange=True))
+    st.plotly_chart(f, use_container_width=True, config={"displayModeBar": False})
     stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids})
     st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
 
@@ -299,8 +311,11 @@ with t2:
     if dca:
         d = E.slice_range(dca["twr"], rng)
         fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
-    fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified")
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified",
+                      legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 with t3:
     cls_val = {}
