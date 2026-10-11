@@ -443,60 +443,127 @@ with t4:
 with t5:
     usd = lambda v: money(v * fx_now)                     # analyses run in USD; shown in the display currency
     pct = lambda v: f"{v:+.1f}%"
-    st.caption("ניתוח של ההחלטות עד היום, לפי התיקים שבחרת למעלה. זה תיאור של מה שקרה, לא המלצה.")
+    st.caption("ניתוח התזמון של הקניות והמכירות, לפי התיקים שבחרת למעלה. תיאור של מה שקרה, לא המלצה.")
 
-    # 1. what worked
-    pa = I.per_asset_pnl(tx_f, assets, prices)
-    if not pa.empty:
-        st.subheader("מה עבד ומה לא")
-        best, worst = pa.iloc[0], pa.iloc[-1]
-        lines = [f"**הכי טוב: {best.asset}** – {usd(best.pnl)} ({pct(best.pct)}) על השקעה של {usd(best.paid)}."]
-        if len(pa) > 1:
-            lines.append(f"**הכי חלש: {worst.asset}** – {usd(worst.pnl)} ({pct(worst.pct)}) על השקעה של {usd(worst.paid)}.")
-        losers = pa[pa.pnl < 0]
-        if len(losers) and pa.pnl.sum() < 0:
-            share = losers.pnl.min() / losers.pnl.sum() * 100
-            lines.append(f"{worst.asset} לבד אחראי ל-{share:.0f}% מכל ההפסדים.")
-        wins = (pa.pnl > 0).sum()
-        lines.append(f"{wins} מתוך {len(pa)} הנכסים שקנית ברווח כרגע (כולל מה שנמכר).")
+    buys_t = I.trade_timing(tx_f, assets, prices, "BUY")
+    sells_t = I.trade_timing(tx_f, assets, prices, "SELL")
+
+    def share(df, mask):
+        return df[mask].usd.sum() / df.usd.sum() * 100 if df.usd.sum() else 0.0
+
+    def buy_lines(df):
+        out = []
+        rp = I.wavg(df, "range_pct")
+        verdict = ("קנית קרוב לתחתיות המקומיות 👍" if rp < 35 else "נטייה לקנות קרוב לשיאים מקומיים" if rp > 65
+                   else "בערך כמו קנייה בזמן אקראי")
+        out.append(f"בממוצע קנית ב-**{rp:.0f}%** מהטווח של החודש שלפני ואחרי כל קנייה "
+                   f"(0% = היום הכי זול, 100% = הכי יקר) – {verdict}.")
+        up, down = df.before_30 > 10, df.before_30 < -10
+        out.append(f"**{share(df, up):.0f}%** מהכסף נקנה אחרי עלייה של 10%+ בחודש שלפני, "
+                   f"ו-**{share(df, down):.0f}%** אחרי ירידה של 10%+.")
+        u90, d90 = I.wavg(df[up], "after_90"), I.wavg(df[down], "after_90")
+        if u90 is not None and d90 is not None:
+            better = "אחרי ירידות" if d90 > u90 else "אחרי עליות"
+            out.append(f"90 יום אחרי הקנייה: קניות אחרי ירידה {pct(d90)}, קניות אחרי עלייה {pct(u90)} – "
+                       f"אצלך הקניות {better} עבדו טוב יותר.")
+        a90 = I.wavg(df, "after_90")
+        if a90 is not None:
+            out.append(f"בממוצע, 90 יום אחרי קנייה המחיר היה {pct(a90)} מהמחיר שקנית.")
+        d = df.dropna(subset=["after_90"])
+        if len(d) >= 3:
+            b, w = d.loc[d.after_90.idxmax()], d.loc[d.after_90.idxmin()]
+            out.append(f"הקנייה עם התזמון הכי טוב: {b.asset} ב-{b.date:%d/%m/%Y} ({pct(b.after_90)} תוך 90 יום). "
+                       f"הכי גרוע: {w.asset} ב-{w.date:%d/%m/%Y} ({pct(w.after_90)}).")
+        return out
+
+    st.subheader("🟢 קניות")
+    btc_b = buys_t[buys_t.asset == "BTC"] if not buys_t.empty else buys_t
+    stk_b = buys_t[buys_t.asset != "BTC"] if not buys_t.empty else buys_t
+    if not btc_b.empty:
+        st.markdown("**ביטקוין**")
+        lines = []
+        bid = next(a for a in assets if assets[a][0] == "BTC")
+        ap = I.avg_price_vs_period(tx_f, prices, bid)
+        if ap:
+            lines.append(f"המחיר הממוצע שלך **{usd(ap['mine'])}** מול **{usd(ap['period_avg'])}** – הממוצע היומי בתקופה "
+                         f"שקנית ({ap['first']:%m/%Y}–{ap['last']:%m/%Y}). כלומר קנית "
+                         f"**{abs(ap['diff_pct']):.1f}% {'בזול' if ap['diff_pct'] < 0 else 'ביוקר'}** "
+                         f"ממי שהיה קונה כל יום אותו סכום.")
+        lines += buy_lines(btc_b)
+        near, deep = btc_b.from_ath > -10, btc_b.from_ath < -30
+        lines.append(f"**{share(btc_b, near):.0f}%** מהכסף נקנה כש-BTC היה בטווח 10% מהשיא, "
+                     f"ו-**{share(btc_b, deep):.0f}%** כשהיה 30%+ מתחת לשיא "
+                     f"(בממוצע {I.wavg(btc_b, 'from_ath'):.0f}% מהשיא).")
         st.markdown("\n".join(f"- {x}" for x in lines))
-        fig = go.Figure(go.Bar(x=pa.pnl * fx_now, y=pa.asset, orientation="h",
-                               marker_color=["#2e9e5b" if v >= 0 else "#d9534f" for v in pa.pnl],
-                               hovertemplate="%{y}: " + sym + "%{x:,.0f}<extra></extra>"))
-        fig.update_layout(height=60 + 34 * len(pa), margin=dict(l=10, r=10, t=10, b=10),
-                          yaxis=dict(autorange="reversed"), xaxis_title=f"רווח/הפסד כולל ({sym})")
-        st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
+    if not stk_b.empty:
+        st.markdown("**מניות וקרנות**")
+        st.markdown("\n".join(f"- {x}" for x in buy_lines(stk_b)))
+        g = stk_b.groupby("asset")
+        tbl = pd.DataFrame({"קניות": g.size(), "סכום": g.usd.sum() * fx_now,
+                            "מיקום בטווח %": g.apply(lambda x: I.wavg(x, "range_pct"), include_groups=False),
+                            "אחרי 90 יום %": g.apply(lambda x: I.wavg(x, "after_90"), include_groups=False)}).reset_index()
+        st.dataframe(tbl.rename(columns={"asset": "נכס"}).style.format(
+            {"סכום": "{:,.0f}", "מיקום בטווח %": "{:.0f}", "אחרי 90 יום %": "{:+.1f}"}, na_rep="–"),
+            use_container_width=True, hide_index=True)
 
-    # 2. all in bitcoin
-    btc_px = daily(history("BTC-USD", start), idx)
-    non_btc = [t for t in tx_f if t.type in ("BUY", "SELL") and assets[t.asset_id][0] != "BTC"]
-    if non_btc and not btc_px.isna().any():
-        st.subheader("אילו הכול היה בביטקוין")
-        alt = I.all_in_btc(tx_f, btc_px)
-        actual = float(sum(vals[a].iloc[-1] for a in ids) + cash_usd.iloc[-1])
-        gap = actual - alt["value"]
-        st.markdown(f"אותם סכומים, באותם תאריכים, אבל כל קנייה הייתה ב-BTC וכל מכירה מוציאה מ-BTC את אותו סכום: "
-                    f"היום זה היה שווה **{usd(alt['value'])}** (כ-{alt['btc_qty']:.4f} BTC), מול **{usd(actual)}** בפועל – "
-                    f"{'יותר ב-' if gap >= 0 else 'פחות ב-'}**{usd(abs(gap))}**.")
-        if gap < 0:
-            st.caption("כלומר, החשיפה לביטקוין דרך מניות וקרנות עלתה לך יותר מאשר להחזיק ביטקוין עצמו.")
+    if not sells_t.empty:
+        st.subheader("🔴 מכירות")
+        lines = []
+        rp = I.wavg(sells_t, "range_pct")
+        lines.append(f"בממוצע מכרת ב-**{rp:.0f}%** מהטווח של החודש שמסביב (100% = מכרת ביום הכי יקר) – "
+                     + ("מכרת קרוב לשיאים 👍" if rp > 65 else "מכרת קרוב לתחתיות מקומיות" if rp < 35
+                        else "בערך כמו מכירה בזמן אקראי") + ".")
+        for col, n in (("after_30", 30), ("after_90", 90)):
+            v = I.wavg(sells_t, col)
+            if v is not None:
+                lines.append(f"{n} יום אחרי המכירה המחיר היה {pct(v)} – "
+                             + ("המכירות הקדימו ירידות 👍" if v < 0 else "המחיר עלה אחרי שמכרת") + ".")
+        drop = sells_t[sells_t.before_30 < -15]
+        if len(drop):
+            v = I.wavg(drop, "after_30")
+            lines.append(f"{len(drop)} מכירות היו אחרי ירידה של 15%+ בחודש שלפני"
+                         + (f"; אחריהן המחיר {'המשיך לרדת' if v < 0 else 'התאושש'} ({pct(v)} תוך 30 יום)" if v is not None else "")
+                         + ".")
+        st.markdown("\n".join(f"- {x}" for x in lines))
+        st.dataframe(pd.DataFrame({"תאריך": sells_t.date.dt.strftime("%d/%m/%Y"), "נכס": sells_t.asset,
+                                   "סכום": sells_t.usd * fx_now, "מיקום בטווח %": sells_t.range_pct,
+                                   "30 יום לפני %": sells_t.before_30, "30 יום אחרי %": sells_t.after_30,
+                                   "90 יום אחרי %": sells_t.after_90})
+                     .style.format({"סכום": "{:,.0f}", "מיקום בטווח %": "{:.0f}", "30 יום לפני %": "{:+.1f}",
+                                    "30 יום אחרי %": "{:+.1f}", "90 יום אחרי %": "{:+.1f}"}, na_rep="–"),
+                     use_container_width=True, hide_index=True)
 
-    # 3. sells
-    sv = I.sells_vs_holding(tx_f, assets, prices)
-    if not sv.empty:
-        st.subheader("המכירות שלך מול להמשיך להחזיק")
-        tot = sv.saved.sum()
-        st.markdown(f"קיבלת {usd(sv.got.sum())} ממכירות. אותן יחידות היו שוות היום {usd(sv.if_held.sum())} – "
-                    f"המכירות {'חסכו לך' if tot >= 0 else 'עלו לך'} **{usd(abs(tot))}**.")
-        b = sv.loc[sv.saved.idxmax()]
-        w = sv.loc[sv.saved.idxmin()]
-        st.markdown(f"- המכירה הכי טובה: {b.asset} ב-{b.date:%d/%m/%Y} ({usd(b.saved)} מול החזקה)\n"
-                    f"- המכירה הכי פחות טובה: {w.asset} ב-{w.date:%d/%m/%Y} ({usd(w.saved)} מול החזקה)")
+    traded = sorted({assets[t.asset_id][0] for t in tx_f if t.type in ("BUY", "SELL") and float(t.price_per_unit) > 0})
+    if traded:
+        st.subheader("📍 איפה קנית ומכרת")
+        pick = st.selectbox("נכס", traded, index=traded.index("BTC") if "BTC" in traded else 0)
+        aid = next(a for a in assets if assets[a][0] == pick)
+        tt = [t for t in tx_f if t.asset_id == aid and t.type in ("BUY", "SELL") and float(t.price_per_unit) > 0]
+        first = min(pd.Timestamp(t.timestamp).normalize().tz_localize(None) for t in tt) - pd.Timedelta(days=30)
+        ps = prices[aid][prices[aid].index >= first] * fx
+        fm = go.Figure(go.Scatter(x=ps.index, y=ps, name=pick, line=dict(color="#9aa0a6", width=1.5),
+                                  hovertemplate=sym + "%{y:,.2f}<extra></extra>"))
+        for kind, color, symbol, label in (("BUY", "#2e9e5b", "triangle-up", "קנייה"),
+                                           ("SELL", "#d9534f", "triangle-down", "מכירה")):
+            k = [t for t in tt if t.type == kind]
+            if not k:
+                continue
+            dd = [pd.Timestamp(t.timestamp).normalize().tz_localize(None) for t in k]
+            usd_amt = [float(t.amount * t.price_per_unit) for t in k]
+            mx = max(usd_amt)
+            fm.add_trace(go.Scatter(x=dd, y=[float(ps.get(d, float("nan"))) for d in dd], mode="markers", name=label,
+                                    marker=dict(color=color, symbol=symbol, line=dict(width=0),
+                                                size=[8 + 16 * (u / mx) ** 0.5 for u in usd_amt]),
+                                    customdata=usd_amt,
+                                    hovertemplate=label + " $%{customdata:,.0f}<extra></extra>"))
+        fm.update_layout(height=380, hovermode="closest", legend=dict(orientation="h", y=-0.2),
+                         margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fm, use_container_width=True, config=CHART_CFG)
+        st.caption("גודל הסימון לפי סכום העסקה.")
 
-    # 4. rotations
     rt = I.rotations(tx_f, assets, prices)
     if not rt.empty:
-        st.subheader("החלפות בין נכסים")
+        st.subheader("🔁 החלפות בין נכסים")
         st.caption("מכרת נכס וקנית אחר באותו תיק תוך שבועיים: מה עשה כל אחד מאז ההחלפה.")
         st.dataframe(pd.DataFrame({"מתאריך": rt.date, "מכרת": rt.sold, "קנית": rt.bought,
                                    "סכום": rt.amount * fx_now, "מה שמכרת %": rt.sold_ret,
@@ -507,33 +574,85 @@ with t5:
         st.markdown(f"בסך הכול ההחלפות {'הרוויחו' if e >= 0 else 'הפסידו'} **{usd(abs(e))}** "
                     f"לעומת השארת הכסף בנכס שנמכר.")
 
-    # 5. fees
-    fs = I.fee_summary(tx_f)
-    if fs["paid"]:
-        st.subheader("עמלות")
-        total_fees = fs["trade"] + fs["account"]
-        st.markdown(f"שילמת {usd(total_fees)} עמלות – {total_fees / fs['paid'] * 100:.2f}% מכל הקניות: "
-                    f"{usd(fs['trade'])} על {fs['trades']} פעולות מסחר"
-                    + (f" ו-{usd(fs['account'])} דמי ניהול וטיפול." if fs["account"] else "."))
-        vba = {}
-        for a in chosen:
-            at = acct_txs[a]
-            vba[a] = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) \
-                + float(cash_model(at, idx)[1].iloc[-1])
-        dr = I.account_fee_drag(tx_f, vba)
-        for r in dr.itertuples():
-            st.markdown(f"- {r.account}: {usd(r.fees_12m)} דמי ניהול וטיפול ב-12 החודשים האחרונים = "
-                        f"**{r.pct:.2f}% בשנה** מהשווי הנוכחי"
-                        + (" – משמעותי ביחס לגודל החשבון." if r.pct >= 0.5 else "."))
+    with st.expander("סיכום כללי"):
+        usd = lambda v: money(v * fx_now)                     # analyses run in USD; shown in the display currency
+        pct = lambda v: f"{v:+.1f}%"
 
-    # 6. concentration
-    cv = {assets[a][0]: float(vals[a].iloc[-1]) for a in ids}
-    cc = I.concentration(cv)
-    if cc:
-        st.subheader("ריכוזיות")
-        st.markdown(f"- הנכס הגדול ביותר: **{cc['top']}** – {cc['top_pct']:.0f}% מהתיק.\n"
-                    f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
-                    f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
+        # 1. what worked
+        pa = I.per_asset_pnl(tx_f, assets, prices)
+        if not pa.empty:
+            st.subheader("מה עבד ומה לא")
+            best, worst = pa.iloc[0], pa.iloc[-1]
+            lines = [f"**הכי טוב: {best.asset}** – {usd(best.pnl)} ({pct(best.pct)}) על השקעה של {usd(best.paid)}."]
+            if len(pa) > 1:
+                lines.append(f"**הכי חלש: {worst.asset}** – {usd(worst.pnl)} ({pct(worst.pct)}) על השקעה של {usd(worst.paid)}.")
+            losers = pa[pa.pnl < 0]
+            if len(losers) and pa.pnl.sum() < 0:
+                share = losers.pnl.min() / losers.pnl.sum() * 100
+                lines.append(f"{worst.asset} לבד אחראי ל-{share:.0f}% מכל ההפסדים.")
+            wins = (pa.pnl > 0).sum()
+            lines.append(f"{wins} מתוך {len(pa)} הנכסים שקנית ברווח כרגע (כולל מה שנמכר).")
+            st.markdown("\n".join(f"- {x}" for x in lines))
+            fig = go.Figure(go.Bar(x=pa.pnl * fx_now, y=pa.asset, orientation="h",
+                                   marker_color=["#2e9e5b" if v >= 0 else "#d9534f" for v in pa.pnl],
+                                   hovertemplate="%{y}: " + sym + "%{x:,.0f}<extra></extra>"))
+            fig.update_layout(height=60 + 34 * len(pa), margin=dict(l=10, r=10, t=10, b=10),
+                              yaxis=dict(autorange="reversed"), xaxis_title=f"רווח/הפסד כולל ({sym})")
+            st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
+
+        # 2. all in bitcoin
+        btc_px = daily(history("BTC-USD", start), idx)
+        non_btc = [t for t in tx_f if t.type in ("BUY", "SELL") and assets[t.asset_id][0] != "BTC"]
+        if non_btc and not btc_px.isna().any():
+            st.subheader("אילו הכול היה בביטקוין")
+            alt = I.all_in_btc(tx_f, btc_px)
+            actual = float(sum(vals[a].iloc[-1] for a in ids) + cash_usd.iloc[-1])
+            gap = actual - alt["value"]
+            st.markdown(f"אותם סכומים, באותם תאריכים, אבל כל קנייה הייתה ב-BTC וכל מכירה מוציאה מ-BTC את אותו סכום: "
+                        f"היום זה היה שווה **{usd(alt['value'])}** (כ-{alt['btc_qty']:.4f} BTC), מול **{usd(actual)}** בפועל – "
+                        f"{'יותר ב-' if gap >= 0 else 'פחות ב-'}**{usd(abs(gap))}**.")
+            if gap < 0:
+                st.caption("כלומר, החשיפה לביטקוין דרך מניות וקרנות עלתה לך יותר מאשר להחזיק ביטקוין עצמו.")
+
+        # 3. sells
+        sv = I.sells_vs_holding(tx_f, assets, prices)
+        if not sv.empty:
+            st.subheader("המכירות שלך מול להמשיך להחזיק")
+            tot = sv.saved.sum()
+            st.markdown(f"קיבלת {usd(sv.got.sum())} ממכירות. אותן יחידות היו שוות היום {usd(sv.if_held.sum())} – "
+                        f"המכירות {'חסכו לך' if tot >= 0 else 'עלו לך'} **{usd(abs(tot))}**.")
+            b = sv.loc[sv.saved.idxmax()]
+            w = sv.loc[sv.saved.idxmin()]
+            st.markdown(f"- המכירה הכי טובה: {b.asset} ב-{b.date:%d/%m/%Y} ({usd(b.saved)} מול החזקה)\n"
+                        f"- המכירה הכי פחות טובה: {w.asset} ב-{w.date:%d/%m/%Y} ({usd(w.saved)} מול החזקה)")
+
+        # 5. fees
+        fs = I.fee_summary(tx_f)
+        if fs["paid"]:
+            st.subheader("עמלות")
+            total_fees = fs["trade"] + fs["account"]
+            st.markdown(f"שילמת {usd(total_fees)} עמלות – {total_fees / fs['paid'] * 100:.2f}% מכל הקניות: "
+                        f"{usd(fs['trade'])} על {fs['trades']} פעולות מסחר"
+                        + (f" ו-{usd(fs['account'])} דמי ניהול וטיפול." if fs["account"] else "."))
+            vba = {}
+            for a in chosen:
+                at = acct_txs[a]
+                vba[a] = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) \
+                    + float(cash_model(at, idx)[1].iloc[-1])
+            dr = I.account_fee_drag(tx_f, vba)
+            for r in dr.itertuples():
+                st.markdown(f"- {r.account}: {usd(r.fees_12m)} דמי ניהול וטיפול ב-12 החודשים האחרונים = "
+                            f"**{r.pct:.2f}% בשנה** מהשווי הנוכחי"
+                            + (" – משמעותי ביחס לגודל החשבון." if r.pct >= 0.5 else "."))
+
+        # 6. concentration
+        cv = {assets[a][0]: float(vals[a].iloc[-1]) for a in ids}
+        cc = I.concentration(cv)
+        if cc:
+            st.subheader("ריכוזיות")
+            st.markdown(f"- הנכס הגדול ביותר: **{cc['top']}** – {cc['top_pct']:.0f}% מהתיק.\n"
+                        f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
+                        f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
 
 with st.expander("📒 ספר עסקאות"):
     st.dataframe(pd.DataFrame([{**t.__dict__, "asset": assets[t.asset_id][0]} for t in tx_f]),

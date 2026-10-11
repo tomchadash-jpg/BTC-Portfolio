@@ -148,3 +148,65 @@ def concentration(values: dict) -> dict:
     top = max(values, key=values.get)
     linked = sum(v for s, v in values.items() if s in BTC_LINKED and v > 0)
     return {"total": total, "top": top, "top_pct": values[top] / total * 100, "btc_linked_pct": linked / total * 100}
+
+
+# ---------------------------------------------------------------- timing ----
+
+def _close(series: pd.Series, day: pd.Timestamp, offset_days: int = 0):
+    """Close on (day + offset); None if that date is still in the future / outside the data."""
+    d = day + pd.Timedelta(days=offset_days)
+    if d > series.index[-1] or d < series.index[0]:
+        return None
+    return _px(series, d)
+
+
+def trade_timing(txs, assets, prices, kind: str, window: int = 30) -> pd.DataFrame:
+    """One row per BUY or SELL (kind) with timing measures, all from daily closes:
+    - range_pct: where that day's close sat within the lowest..highest close of +-`window` days
+                 (0 = the cheapest day of those two months, 100 = the most expensive)
+    - before_30: price change over the 30 days before the trade (did you buy after a rise or a dip?)
+    - after_30 / after_90: price change in the 30 / 90 days after (None if not that long ago yet)
+    - from_ath: distance of that day's close from the highest close so far
+    """
+    out = []
+    for t in txs:
+        if t.type != kind or float(t.price_per_unit) <= 0:
+            continue
+        s, day = prices[t.asset_id], _day(t)
+        p = _px(s, day)
+        if not p:
+            continue
+        win = s[(s.index >= day - pd.Timedelta(days=window)) & (s.index <= day + pd.Timedelta(days=window))]
+        lo, hi = float(win.min()), float(win.max())
+        b30, a30, a90 = _close(s, day, -30), _close(s, day, 30), _close(s, day, 90)
+        ath = float(s[s.index <= day].max())
+        out.append({"date": day, "asset": assets[t.asset_id][0], "account": A.account_of(t.notes),
+                    "usd": float(t.amount * t.price_per_unit), "price": float(t.price_per_unit),
+                    "range_pct": (p - lo) / (hi - lo) * 100 if hi > lo else 50.0,
+                    "before_30": (p / b30 - 1) * 100 if b30 else None,
+                    "after_30": (a30 / p - 1) * 100 if a30 else None,
+                    "after_90": (a90 / p - 1) * 100 if a90 else None,
+                    "from_ath": (p / ath - 1) * 100 if ath else 0.0})
+    return pd.DataFrame(out)
+
+
+def wavg(df: pd.DataFrame, col: str) -> float | None:
+    d = df.dropna(subset=[col])
+    return float((d[col] * d.usd).sum() / d.usd.sum()) if len(d) and d.usd.sum() else None
+
+
+def avg_price_vs_period(txs, prices, aid) -> dict | None:
+    """Your average buy price vs. the plain average daily close over the period you were buying."""
+    buys = [t for t in txs if t.type == "BUY" and t.asset_id == aid and float(t.price_per_unit) > 0]
+    if len(buys) < 2:
+        return None
+    qty = sum(float(t.amount) for t in buys)
+    paid = sum(float(t.amount * t.price_per_unit) for t in buys)
+    first, last = min(_day(t) for t in buys), max(_day(t) for t in buys)
+    s = prices[aid]
+    period = s[(s.index >= first) & (s.index <= last)]
+    if period.empty:
+        return None
+    mine, avg = paid / qty, float(period.mean())
+    return {"mine": mine, "period_avg": avg, "diff_pct": (mine / avg - 1) * 100, "first": first, "last": last,
+            "n": len(buys)}
