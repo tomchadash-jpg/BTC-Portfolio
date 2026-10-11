@@ -396,6 +396,33 @@ with t1:
                     yaxis=dict(title=f"({ccy})"),
                     yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False))
     st.plotly_chart(f, use_container_width=True, config=CHART_CFG)
+    # --- month by month: how much the market moved the portfolio vs. new money put in ---
+    val_c = nw_usd * fx                                   # value in display currency, daily
+    flow_c = new_money * fx                               # new money in, at each day's rate
+    m_end = val_c.resample("ME").last()
+    m_in = flow_c.resample("ME").sum()
+    m_gain = m_end - m_end.shift(1).fillna(0.0) - m_in    # change in value that didn't come from new money
+    monthly = pd.DataFrame({"gain": m_gain, "new": m_in})
+    monthly = E.slice_range(monthly, rng) if rng != "ALL" else monthly
+    if len(monthly):
+        labels = [d.strftime("%m/%y") for d in monthly.index]
+        fmn = go.Figure()
+        fmn.add_trace(go.Bar(x=labels, y=monthly.gain, name="שינוי מהשוק",
+                             marker_color=["#2e9e5b" if v >= 0 else "#d9534f" for v in monthly.gain],
+                             hovertemplate=sym + "%{y:,.0f}<extra>שינוי מהשוק</extra>"))
+        fmn.add_trace(go.Scatter(x=labels, y=monthly.new, name="כסף חדש שהוכנס", mode="lines+markers",
+                                 line=dict(color="#9aa0a6", width=1.5, dash="dot"), marker=dict(size=5),
+                                 hovertemplate=sym + "%{y:,.0f}<extra>כסף חדש</extra>"))
+        fmn.update_layout(title=f"חודש אחרי חודש ({ccy})", height=360, hovermode="x unified", bargap=0.25,
+                          legend=dict(orientation="h", y=-0.2), margin=dict(l=10, r=10),
+                          yaxis=dict(tickprefix=sym, title=None), xaxis=dict(title=None, type="category"))
+        st.plotly_chart(fmn, use_container_width=True, config=CHART_CFG)
+        good, bad = int((monthly.gain > 0).sum()), int((monthly.gain < 0).sum())
+        best, worst = monthly.gain.idxmax(), monthly.gain.idxmin()
+        st.caption(f"עמודה = כמה התיק עלה או ירד באותו חודש בגלל תנודות המחיר בלבד, בלי הכסף שהוספת. "
+                   f"{good} חודשים ירוקים, {bad} אדומים. "
+                   f"הכי טוב: {best:%m/%Y} ({money(float(monthly.gain[best]))}) · "
+                   f"הכי גרוע: {worst:%m/%Y} ({money(float(monthly.gain[worst]))}).".replace("$", "\\$"))
     if dca:                                               # bitcoin only: my BTC buys vs. daily DCA
         bd = pd.DataFrame({"ה-BTC שלי": dca["mine"] * fx, "DCA יומי": dca["usd"] * fx,
                            "הושקע ב-BTC": dca["inv"]})
