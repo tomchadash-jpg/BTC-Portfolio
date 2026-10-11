@@ -315,9 +315,15 @@ if A.COLD in chosen:                           # bitcoin network fees exist only
 btc_held = [a for a in ids if assets[a][0] == "BTC"]
 if btc_held:                                   # bitcoin in the cold wallet: amount first, it's what matters most
     q = sum(float(summ.by_asset[a]["qty"]) for a in btc_held)
-    v = sum(float(summ.by_asset[a]["value"]) for a in btc_held) * fx_now
-    cards.insert(0, ("₿ בארנק הקר", f"{q:.8f}".rstrip("0").rstrip(".") + " BTC",
-                     f"{q * 1e8:,.0f} sats · {money(v)}"))
+    px_btc = float(summ.by_asset[btc_held[0]]["price"]) * fx_now
+    on_ex = A.btc_on_exchanges(tx_f, set(btc_held))
+    ex_q = sum(on_ex.values())
+    btc_fmt = lambda x: f"{x:.8f}".rstrip("0").rstrip(".") + " BTC"
+    if ex_q > 0:
+        cards[0:0] = [("₿ בארנק הקר", btc_fmt(q - ex_q), f"{(q - ex_q) * 1e8:,.0f} sats · {money((q - ex_q) * px_btc)}"),
+                      ("₿ בבורסה", btc_fmt(ex_q), " · ".join(f"{p} {v * 1e8:,.0f} sats" for p, v in on_ex.items() if v > 0))]
+    else:
+        cards.insert(0, ("₿ בארנק הקר", btc_fmt(q), f"{q * 1e8:,.0f} sats · {money(q * px_btc)}"))
 grid(cards, "kpi_main")
 
 if len(chosen) > 1:
