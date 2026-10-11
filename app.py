@@ -383,10 +383,38 @@ with t1:
                     yaxis=dict(title=f"({ccy})"),
                     yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False))
     st.plotly_chart(f, use_container_width=True, config=CHART_CFG)
-    stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids})
+    # --- value by asset: stacked layers, biggest at the bottom, small ones grouped as "אחר" ---
+    stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids if (vals[a] > 0.5).any()})
     if (cash_usd > 0.5).any():
         stack["מזומן"] = cash_usd * fx
-    st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
+    sl_st = E.slice_range(stack, rng)
+    sl_st = sl_st.loc[:, (sl_st > 0.5).any()]                 # assets not held in this range
+    if not sl_st.empty:
+        peak_total = float(sl_st.sum(axis=1).max())
+        small = [c for c in sl_st if c != "מזומן" and sl_st[c].max() < 0.03 * peak_total]
+        if len(small) > 1:
+            sl_st["אחר"] = sl_st[small].sum(axis=1)
+            sl_st = sl_st.drop(columns=small)
+        order = sorted(sl_st.columns, key=lambda c: -float(sl_st[c].iloc[-1]) - float(sl_st[c].max()) / 1e6)
+        as_pct = st.radio("הצג", ["שווי", "% מהתיק"], horizontal=True, key="stack_mode", label_visibility="collapsed")
+        shown = sl_st.div(sl_st.sum(axis=1).replace(0, float("nan")), axis=0) * 100 if as_pct == "% מהתיק" else sl_st
+        palette = {"BTC": "#F7931A", "IBIT": "#4C8BF5", "MSTR": "#E0457B", "MSTX": "#B04AC9", "MTPLF": "#2EB8A6",
+                   "MPJPY": "#7FD1C5", "ASST": "#F2C94C", "TSWCF": "#9B7B5B", "TQQQ": "#8E9AAF",
+                   "מזומן": "#6FCF97", "אחר": "#9AA0A6"}
+        extra = iter(["#56CCF2", "#BB6BD9", "#EB5757", "#27AE60", "#F2994A"])
+        fs = go.Figure()
+        for c in order:
+            fs.add_trace(go.Scatter(x=shown.index, y=shown[c], name=c, stackgroup="one", mode="lines",
+                                    line=dict(width=0.6, color=palette.get(c) or next(extra, "#cccccc")),
+                                    hovertemplate=("%{y:.0f}%" if as_pct == "% מהתיק" else sym + "%{y:,.0f}")))
+        fs.update_layout(title="ממה מורכב התיק לאורך זמן", height=380, hovermode="x unified",
+                         legend=dict(orientation="h", y=-0.15, traceorder="normal"), margin=dict(l=10, r=10),
+                         yaxis=dict(title=None, ticksuffix="%" if as_pct == "% מהתיק" else "",
+                                    tickprefix="" if as_pct == "% מהתיק" else sym),
+                         xaxis=dict(title=None))
+        st.plotly_chart(fs, use_container_width=True, config=CHART_CFG)
+        st.caption("כל צבע הוא נכס, ועובי השכבה הוא כמה הוא שווה באותו יום. הקצה העליון הוא שווי התיק כולו. "
+                   "ב'% מהתיק' רואים איך החלוקה בין הנכסים השתנתה. נכסים קטנים מ-3% מאוחדים ל'אחר'.")
     if dca:                                               # bitcoin only: my BTC buys vs. daily DCA
         bd = pd.DataFrame({"ה-BTC שלי": dca["mine"] * fx, "DCA יומי": dca["usd"] * fx,
                            "הושקע ב-BTC": dca["inv"]})
