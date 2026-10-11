@@ -148,7 +148,7 @@ if not txs:
     st.info("אין עסקאות עדיין. הוסף בעמוד add transaction בתפריט הצד")
     st.stop()
 
-st.title("📈 Portfolio Tracker")
+st.markdown("<h1 style='text-align:center'>📈 Portfolio Tracker</h1>", unsafe_allow_html=True)
 
 # ------------------------------ account sections ------------------------------
 acct_txs = {a: [t for t in txs if A.account_of(t.notes) == a] for a in A.ORDER}
