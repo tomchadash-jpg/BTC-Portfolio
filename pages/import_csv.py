@@ -23,7 +23,18 @@ if not (URL and UID):
 st.title("📥 ייבוא ומחיקה")
 tab_imp, tab_del = st.tabs(["ייבוא CSV", "🗑️ מחיקה"])
 
-DEFAULTS = {"BTC": ("Bitcoin", "crypto", "BTC-USD")}
+DEFAULTS = {  # symbol -> (name, asset_class, Yahoo ticker) for assets created on import
+    "BTC": ("Bitcoin", "crypto", "BTC-USD"),
+    "CASH": ("Cash / account fees", "cash", "CASH"),
+    "IBIT": ("iShares Bitcoin Trust", "equity", "IBIT"),
+    "MSTR": ("Strategy (MicroStrategy)", "equity", "MSTR"),
+    "MSTX": ("2x MSTR ETF", "equity", "MSTX"),
+    "MTPLF": ("Metaplanet", "equity", "MTPLF"),
+    "MPJPY": ("Metaplanet ADR", "equity", "MPJPY"),
+    "ASST": ("Strive", "equity", "ASST"),
+    "TSWCF": ("Smarter Web Company", "equity", "TSWCF"),
+    "TQQQ": ("ProShares UltraPro QQQ", "equity", "TQQQ"),
+}
 
 with tab_imp:
     st.caption("עמודות: date, symbol, type, amount, price_per_unit, fee, currency, notes. שורות שכבר קיימות מדולגות.")

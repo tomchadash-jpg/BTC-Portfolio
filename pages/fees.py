@@ -41,7 +41,7 @@ def btc_prices(start):
 
 
 def platform(notes):
-    for name in ("Horizon", "Bits of Gold", "Coinbox"):
+    for name in ("Horizon", "Bits of Gold", "Coinbox", "IBI"):
         if name in notes:
             return name
     return "אחר"
