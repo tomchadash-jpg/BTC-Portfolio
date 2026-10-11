@@ -22,7 +22,12 @@ def top(overlap: bool = False):
            f"{' margin-bottom: -3.4rem;' if overlap else ''} }}"
            f".st-key-{key} [data-testid='stPopover'] {{ width: fit-content !important; margin-left: auto !important;"
            f" margin-right: 0 !important; }}"
-           f".st-key-{key} button {{ font-size: 1.35rem; padding: .1rem .7rem; width: auto !important; }}")
+           # a plain, big ☰: no border/background, no little arrow next to it
+           f".st-key-{key} button {{ border: none !important; background: transparent !important;"
+           f" box-shadow: none !important; padding: 0 .2rem !important; min-height: 0 !important;"
+           f" width: auto !important; }}"
+           f".st-key-{key} button p {{ font-size: 2.2rem !important; line-height: 1 !important; margin: 0 !important; }}"
+           f".st-key-{key} button svg, .st-key-{key} button [data-testid='stIconMaterial'] {{ display: none !important; }}")
     (st.html if hasattr(st, "html") else lambda c: st.markdown(c, unsafe_allow_html=True))(f"<style>{css}</style>")
     with st.container(key=key):
         pop = st.popover("☰")
