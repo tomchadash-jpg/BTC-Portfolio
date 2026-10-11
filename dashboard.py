@@ -146,6 +146,7 @@ def avg_fx(txs, idx, fx):
 
 # ------------------------------ load ------------------------------
 (assets, txs), is_demo = load_ledger()
+all_assets, all_txs = dict(assets), list(txs)       # before any section filter (goals use them)
 if not txs:
     st.info("אין עסקאות עדיין. ייבא קובץ בעמוד ״ייבוא ומחיקה״ בתפריט ☰")
     st.stop()
@@ -174,7 +175,7 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
+SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🎯 יעדים", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
 with menu_pop:
     st.divider()
     section = st.radio("תצוגה", SECTIONS, key="section")
@@ -186,11 +187,7 @@ with menu_pop:
     bench = st.multiselect("מדדי ייחוס", list(BENCH), default=list(BENCH))
     dca_on = st.checkbox("השוואת BTC ל-DCA יומי", value=True,
                          help="הכסף שהשקעת בביטקוין בלבד, מחולק שווה על כל יום מהרכישה הראשונה של BTC ועד היום")
-    st.subheader("הקצאת יעד (%)")
-    default_t = {"equity": 50, "crypto": 35, "cash": 15}
-    targets = {c: st.slider(he(c), 0, 100, default_t.get(c, 0), key=f"target_{c}") for c in classes}
-    if sum(targets.values()) != 100:
-        st.warning(f"סכום היעדים: {sum(targets.values())}% (אמור להיות 100%)")
+    btc_goal = st.number_input("יעד ביטקוין (BTC)", min_value=0.01, value=2.1, step=0.1, format="%.2f", key="btc_goal")
     if is_demo:
         st.info("מצב דמו – הגדר DATABASE_URL ו-USER_ID לנתונים אמיתיים")
 
@@ -500,24 +497,81 @@ if section == SECTIONS[1]:
     st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
 
 if section == SECTIONS[2]:
-    cls_val = {}
-    for a in ids:
-        cls_val[assets[a][2]] = cls_val.get(assets[a][2], D(0)) + summ.by_asset[a]["value"]
-    cur = E.allocation(cls_val)
-    drift = E.rebalancing_drift(cur, targets, float(summ.net_worth) * fx_now)
-    c1, c2 = st.columns(2)
-    c1.plotly_chart(px.pie(names=[he(c) for c in cur], values=list(cur.values()), hole=.45, title="הקצאה נוכחית"),
-                    use_container_width=True)
-    bar = go.Figure([go.Bar(x=[he(c) for c in drift.index], y=drift.current_pct, name="נוכחי"),
-                     go.Bar(x=[he(c) for c in drift.index], y=drift.target_pct, name="יעד")])
-    bar.update_layout(barmode="group", title="נוכחי מול יעד")
-    c2.plotly_chart(bar, use_container_width=True)
-    dr = drift.rename(index=he, columns={"current_pct": "נוכחי %", "target_pct": "יעד %", "drift_pp": "סטייה (נק׳ אחוז)",
-                                         "rebalance_usd": f"לאיזון ({sym})"})
-    st.dataframe(dr.style.format({"נוכחי %": "{:.1f}", "יעד %": "{:.1f}", "סטייה (נק׳ אחוז)": "{:+.1f}",
-                                  f"לאיזון ({sym})": f"{sym}{{:+,.0f}}"})
-                 .background_gradient(subset=["סטייה (נק׳ אחוז)"], cmap="RdYlGn_r"), use_container_width=True)
-    st.caption("לאיזון: כמה לקנות (+) או למכור (-) מכל סוג כדי להגיע ליעד. היעדים נקבעים בתפריט ☰.")
+    today = pd.Timestamp(datetime.now().date())
+
+    def price_on(aid, ix):
+        """Daily USD closes for an asset on index ix (live price for today when available)."""
+        sym_, _, _, api = all_assets[aid]
+        p = daily(history(api, ix[0].strftime("%Y-%m-%d")), ix)
+        if CG.get(sym_) in live:
+            p.iloc[-1] = live[CG[sym_]]
+        return p.fillna(0.0)
+
+    # ---------- goal 1: 2.1 BTC ----------
+    st.subheader(f"₿ יעד: {btc_goal:g} ביטקוין")
+    btc_aid = [a for a in all_assets if all_assets[a][0] == "BTC"]
+    btc_txs = [t for t in all_txs if t.asset_id in btc_aid]
+    if btc_txs:
+        have = sum(float(t.amount) * (-1 if t.type == "SELL" else 1)
+                   for t in btc_txs if t.type in ("BUY", "SELL", "STAKING_REWARD"))
+        left = max(btc_goal - have, 0.0)
+        btc_px_now = float(live.get(CG["BTC"]) or price_on(btc_aid[0], pd.date_range(today - pd.Timedelta(days=7), today)).iloc[-1])
+        since = today - pd.Timedelta(days=90)
+        recent = sum(float(t.amount) for t in btc_txs if t.type == "BUY"
+                     and pd.Timestamp(t.timestamp).tz_localize(None).normalize() >= since)
+        pace = recent / 90                                  # BTC per day over the last 3 months
+        pct_done = min(have / btc_goal * 100, 100)
+        st.progress(pct_done / 100, text=f"{have:.4f} מתוך {btc_goal:g} BTC · {pct_done:.1f}%")
+        items = [("🧱", f"₿{left:.4f}", "נשאר לצבור", f"{left * 1e8 / 1e6:,.1f}M sats", None),
+                 ("💵", money(left * btc_px_now * fx_now).replace("$", "&#36;"), "עלות ההשלמה במחיר של היום",
+                  f"לפי {money(btc_px_now * fx_now).replace('$', '&#36;')} לביטקוין", None)]
+        if left <= 0:
+            items = [("🏁", "✓", "היעד הושג", f"יש לך {have:.4f} BTC", "good")]
+        elif pace > 0:
+            eta = today + pd.Timedelta(days=left / pace)
+            items.append(("⏳", f"{eta:%m/%Y}", "בקצב של 3 החודשים האחרונים",
+                          f"{pace * 30:.4f} BTC בחודש ({pace * 1e8 * 30 / 1e6:,.2f}M sats). "
+                          f"עוד כ-{left / pace / 365:.1f} שנים.", None))
+        else:
+            items.append(("⏳", "–", "קצב צבירה", "לא היו קניות ב-3 החודשים האחרונים.", None))
+        cards(items)
+        st.caption("כל הביטקוין שבבעלותך – בארנק הקר ובבורסות. ה-IBIT בגמל לא נספר, הוא קרן ולא ביטקוין. "
+                   "היעד ניתן לשינוי בתפריט ☰.")
+
+    # ---------- goal 2: קרן השתלמות beats bitcoin ----------
+    st.subheader("📈 יעד: קרן ההשתלמות מנצחת את הביטקוין")
+    k_txs = [t for t in all_txs if A.account_of(t.notes) == "קרן השתלמות"]
+    if not k_txs or not btc_aid:
+        st.info("אין עדיין עסקאות בקרן ההשתלמות")
+    else:
+        k_start = pd.Timestamp(min(t.timestamp for t in k_txs)).tz_localize(None).normalize()
+        kix = pd.date_range(k_start, today, freq="D")
+        k_val = sum(signed_qty(k_txs, aid, kix) * price_on(aid, kix)
+                    for aid in {t.asset_id for t in k_txs} if all_assets[aid][0] != "CASH")
+        k_new, k_cash = cash_model(k_txs, kix)
+        k_twr = E.twr_index(k_val + k_cash, k_new)
+        btc_k = price_on(btc_aid[0], kix)
+        periods = [("מההתחלה", k_start), ("שנה אחרונה", today - pd.DateOffset(years=1)),
+                   ("מתחילת השנה", pd.Timestamp(today.year, 1, 1)), ("3 חודשים", today - pd.DateOffset(months=3))]
+        items, wins = [], 0
+        for label, p0 in periods:
+            p0 = max(p0, k_start)
+            k_r = float(k_twr.iloc[-1] / k_twr[k_twr.index >= p0].iloc[0] - 1) * 100
+            b_r = float(btc_k.iloc[-1] / btc_k[btc_k.index >= p0].iloc[0] - 1) * 100
+            gap = k_r - b_r
+            wins += gap > 0
+            items.append(("✅" if gap > 0 else "❌", f"{gap:+.1f}%", label,
+                          f"הקרן {k_r:+.1f}% · ביטקוין {b_r:+.1f}%", "good" if gap > 0 else "bad"))
+        cards(items)
+        st.caption(f"ביצועי יתר = התשואה של הקרן (TWR, לא מושפעת מהפקדות) פחות התשואה של ביטקוין באותה תקופה. "
+                   f"הקרן מנצחת ב-{wins} מתוך {len(periods)} התקופות.")
+        sl_k = E.slice_range(pd.DataFrame({"קרן השתלמות": k_twr, "ביטקוין": btc_k}), rng)
+        fk = go.Figure()
+        for col, color in (("קרן השתלמות", "#4C8BF5"), ("ביטקוין", "#F7931A")):
+            fk.add_trace(go.Scatter(x=sl_k.index, y=E.rebased(sl_k[col]), name=col, line=dict(color=color, width=2)))
+        fk.update_layout(title="קרן ההשתלמות מול ביטקוין", height=380, hovermode="x unified",
+                         yaxis_title="100 = תחילת הטווח", legend=dict(orientation="h", y=-0.2), margin=dict(l=10, r=10))
+        st.plotly_chart(fk, use_container_width=True, config=CHART_CFG)
 
 if section == SECTIONS[3]:
     rows = []
