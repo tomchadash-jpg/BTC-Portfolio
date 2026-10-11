@@ -6,9 +6,7 @@ writing into the returned popover.
 """
 import streamlit as st
 
-PAGES = [("dashboard.py", "התיק שלי", "📈"),
-         ("pages/import_csv.py", "ייבוא ומחיקה", "📥"),
-         ("pages/fees.py", "עמלות", "💸")]
+NAV = []          # StreamlitPage objects, set by app.py on every run
 
 
 def top(overlap: bool = False):
@@ -37,6 +35,8 @@ def top(overlap: bool = False):
         except TypeError:
             pop = st.popover("☰")
     with pop:
-        for path, title, icon in PAGES:
-            st.page_link(path, label=title, icon=icon)
+        for i, page in enumerate(NAV):
+            if i == len(NAV) - 2:                      # the dashboard sections first, then the tools
+                st.divider()
+            st.page_link(page)
     return pop

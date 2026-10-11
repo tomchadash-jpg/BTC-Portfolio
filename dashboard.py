@@ -176,9 +176,8 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
 SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🎯 יעדים", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
+section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
 with menu_pop:
-    st.divider()
-    section = st.radio("תצוגה", SECTIONS, key="section")
     st.divider()
     st.markdown("**⚙️ הגדרות**")
     classes = sorted({a[2] for a in assets.values()})

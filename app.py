@@ -15,9 +15,29 @@ for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw"
     if _name in sys.modules:
         importlib.reload(sys.modules[_name])
 
-pg = st.navigation([
-    st.Page("dashboard.py", title="התיק שלי", icon="📈", default=True),
-    st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon="📥"),
-    st.Page("pages/fees.py", title="עמלות", icon="💸"),
-], position="hidden")
+import runpy
+from pathlib import Path
+
+import menu
+
+DASHBOARD = str(Path(__file__).resolve().parent / "dashboard.py")
+# (title, icon, url) - every section of the dashboard is its own page in the ☰ menu
+SECTIONS = [("שווי היסטורי", "📊", "history"), ("השוואה למדדים", "🆚", "benchmarks"), ("יעדים", "🎯", "goals"),
+            ("נכסים", "📋", "assets"), ("תובנות", "💡", "insights"), ("Power Law", "📐", "powerlaw")]
+
+
+def section_page(i: int):
+    def run():
+        st.session_state["section_idx"] = i            # dashboard.py draws only this section
+        runpy.run_path(DASHBOARD, run_name="__main__")
+    run.__name__ = f"section_{SECTIONS[i][2]}"         # pages are told apart by their function name
+    return run
+
+
+pages = [st.Page(section_page(i), title=t, icon=ic, url_path=u, default=(i == 0))
+         for i, (t, ic, u) in enumerate(SECTIONS)]
+pages += [st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon="📥"),
+          st.Page("pages/fees.py", title="עמלות", icon="💸")]
+menu.NAV = pages                                       # the ☰ menu links to these
+pg = st.navigation(pages, position="hidden")
 pg.run()
