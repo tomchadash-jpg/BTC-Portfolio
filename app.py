@@ -19,6 +19,8 @@ import engine as E
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
 
+import ui
+ui.rtl()
 import gate
 gate.require_login()  # nothing below runs without the password
 

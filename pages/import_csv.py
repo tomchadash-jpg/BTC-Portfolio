@@ -9,6 +9,8 @@ import streamlit as st
 
 st.set_page_config(page_title="ייבוא ומחיקה", page_icon="📥")
 
+import ui
+ui.rtl()
 import gate
 gate.require_login()  # nothing below runs without the password
 

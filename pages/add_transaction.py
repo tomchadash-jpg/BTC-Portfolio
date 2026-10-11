@@ -7,6 +7,8 @@ import streamlit as st
 
 st.set_page_config(page_title="הוסף עסקה", page_icon="➕")
 
+import ui
+ui.rtl()
 import gate
 gate.require_login()  # nothing below runs without the password
 

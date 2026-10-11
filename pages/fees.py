@@ -9,6 +9,8 @@ import yfinance as yf
 
 st.set_page_config(page_title="עמלות", page_icon="💸", layout="wide")
 
+import ui
+ui.rtl()
 import gate
 gate.require_login()  # nothing below runs without the password
 
