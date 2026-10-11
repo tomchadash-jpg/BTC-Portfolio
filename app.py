@@ -132,12 +132,19 @@ if not txs:
 st.title("📈 Portfolio Tracker")
 
 # ------------------------------ account sections ------------------------------
-ALL = "הכל"
 acct_txs = {a: [t for t in txs if A.account_of(t.notes) == a] for a in A.ORDER}
 present = [a for a in A.ORDER if acct_txs[a]]
-view = st.radio("תיק", [ALL] + present, horizontal=True) if len(present) > 1 else ALL
-if view != ALL:
-    txs = acct_txs[view]
+chosen = present
+if len(present) > 1:
+    if hasattr(st, "pills"):
+        chosen = st.pills("תיקים", present, selection_mode="multi", default=present) or []
+    else:
+        chosen = st.multiselect("תיקים", present, default=present)
+    if not chosen:
+        st.info("בחר לפחות תיק אחד")
+        st.stop()
+    chosen = [a for a in present if a in chosen]
+    txs = [t for a in chosen for t in acct_txs[a]]
     assets = {a: v for a, v in assets.items() if any(t.asset_id == a for t in txs)}
 
 start = min(t.timestamp for t in txs).strftime("%Y-%m-%d")
@@ -246,36 +253,59 @@ st.caption(f"עודכן {loaded_at():%H:%M}" + (f" · מחיר חי (CoinGecko):
            + " · שאר המחירים מ-Yahoo עם עיכוב של כמה דקות")
 money = lambda v: f"{'-' if v < 0 else ''}{sym}{abs(v):,.0f}"
 pl = nw_now - invested_now
-k = st.columns(4)
-k[0].metric("שווי נקי", money(nw_now))
-k[1].metric("סה״כ הושקע", money(invested_now))
-k[2].metric("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%")
-k[3].metric("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now))
-if view in (ALL, A.COLD):                       # bitcoin network fees exist only there
-    k2 = st.columns(2)
-    k2[0].metric("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now))
-    k2[1].metric("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now))
-if view == ALL and len(present) > 1:
+
+
+def grid(cards, key, per_row=3):
+    """Metric cards in rows of `per_row` (kept side by side on phones too, see CSS below)."""
+    with st.container(key=key):
+        for i in range(0, len(cards), per_row):
+            cols = st.columns(per_row)
+            for col, (label, value, delta) in zip(cols, cards[i:i + per_row]):
+                col.metric(label, value, delta)
+
+
+st.markdown("""<style>
+[class*="st-key-kpi"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: .5rem; }
+[class*="st-key-kpi"] [data-testid="stColumn"], [class*="st-key-kpi"] [data-testid="column"] {
+    min-width: 0 !important; width: calc(33.3% - .35rem) !important; flex: 1 1 0 !important; }
+[class*="st-key-kpi"] [data-testid="stMetric"] { background: rgba(128,128,128,.08); border-radius: .6rem; padding: .5rem .6rem; }
+[class*="st-key-kpi"] [data-testid="stMetricLabel"] p { font-size: .75rem; white-space: normal; line-height: 1.2; }
+[class*="st-key-kpi"] [data-testid="stMetricValue"] { font-size: 1.15rem; }
+[class*="st-key-kpi"] [data-testid="stMetricDelta"] { font-size: .7rem; }
+</style>""", unsafe_allow_html=True)
+
+cards = [("שווי נקי", money(nw_now), None),
+         ("סה״כ הושקע", money(invested_now), None),
+         ("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%"),
+         ("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now), None),
+         ("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה"),
+         ("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%", None)]
+if A.COLD in chosen:                           # bitcoin network fees exist only in the cold wallet
+    cards += [("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now), None),
+              ("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now), None)]
+grid(cards, "kpi_main")
+
+if len(chosen) > 1:
     st.subheader("לפי תיק")
-    ka = st.columns(len(present))
-    for i, a in enumerate(present):
+    acards = []
+    for a in chosen:
         at = [t for t in acct_txs[a] if assets[t.asset_id][2] in sel]
         v = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) * fx_now
         inv = float((contributions(at, idx) * fx).sum())
-        ka[i].metric(a, money(v), money(v - inv) + " רווח/הפסד" if inv else None)
-k3 = st.columns(2)
-k3[0].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
-k3[1].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
+        acards.append((a, money(v), f"{money(v - inv)} ({(v - inv) / inv * 100:+.1f}%)" if inv else None))
+    grid(acards, "kpi_accounts")
+
 held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
 if held:
-    kc = st.columns(min(len(held), 3))
-    for i, a in enumerate(held):
+    st.subheader("מחיר רכישה ממוצע")
+    hcards = []
+    for a in held:
         b = summ.by_asset[a]
         avg = float(b["avg_cost"]) * afx[a]
         now = float(b["price"]) * fx_now
         fmt = (lambda x: f"{sym}{x:,.2f}") if avg < 100 else (lambda x: f"{sym}{x:,.0f}")
-        kc[i % len(kc)].metric(f"מחיר רכישה ממוצע – {assets[a][0]}", fmt(avg),
-                               f"{(now / avg - 1) * 100:+.1f}% (מחיר היום {fmt(now)})")
+        hcards.append((assets[a][0], fmt(avg), f"{(now / avg - 1) * 100:+.1f}% (היום {fmt(now)})"))
+    grid(hcards, "kpi_assets")
 if ccy == "ILS":
     st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
                "ולכן הרווח וההפסד כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
