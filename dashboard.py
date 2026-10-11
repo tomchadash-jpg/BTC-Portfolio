@@ -470,10 +470,15 @@ if section == SECTIONS[1]:
         my_qty = sum(float(summ.by_asset[a]["qty"]) for a in btc_ids)
         grid([("BTC שלי – שווי", f"{sym}{mine_now:,.0f}", f"{'+' if diff >= 0 else '-'}{sym}{abs(diff):,.0f} מול DCA"),
               ("DCA יומי – שווי", f"{sym}{dca_now:,.0f}", None),
-              ("BTC: שלי / DCA", f"{my_qty:.4f} / {dca['qty']:.4f}", None)], "kpi_dca")
-        st.caption(f"DCA יומי: אותו סכום שהשקעת בביטקוין (\\${dca['total']:,.0f}), מחולק שווה לכ-\\${dca['per_day']:,.0f} ליום "
+              ("BTC שלי מול DCA", f"₿{my_qty:.3f}", f"DCA: ₿{dca['qty']:.3f}")], "kpi_dca")
+        tot_c = float(dca["inv"].iloc[-1])                 # in the display currency, at each purchase day's rate
+        per_c = tot_c / max(int((idx >= dca["start"]).sum()), 1)
+        mny = lambda v: money(v).replace("$", "\\$")
+        st.caption(f"DCA יומי: אותו סכום שהשקעת בביטקוין ({mny(tot_c)}), מחולק שווה לכ-{mny(per_c)} ליום "
                    f"מהרכישה הראשונה של BTC ועד היום, לפי מחיר הסגירה היומי. ההשוואה היא רק לביטקוין, "
                    f"בלי הנכסים האחרים. ההפרש מראה אם הקניות שלך הקדימו (+) או פיגרו (-) אחרי קנייה יומית קבועה.")
+    st.caption("הגרף מתחת מציג תשואה באחוזים ולא סכומים: כל הקווים מתחילים מ-100, "
+               "כך ש-150 = עלייה של 50% מתחילת הטווח. לכן הוא זהה בדולרים ובשקלים.")
     sl = E.slice_range(twr, rng)
     fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="Portfolio (TWR)", line=dict(width=3)))
     for b in bench:
