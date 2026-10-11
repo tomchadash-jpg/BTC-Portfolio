@@ -48,4 +48,9 @@ _CSS = """
 
 
 def rtl() -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+    # st.html injects a <style> block reliably (and takes no space on the page);
+    # older Streamlit versions fall back to markdown.
+    if hasattr(st, "html"):
+        st.html(_CSS)
+    else:
+        st.markdown(_CSS, unsafe_allow_html=True)

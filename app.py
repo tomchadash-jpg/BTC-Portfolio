@@ -293,7 +293,7 @@ def grid(cards, key, per_row=3):
                 col.metric(label, value, delta)
 
 
-st.markdown("""<style>
+(st.html if hasattr(st, "html") else lambda c: st.markdown(c, unsafe_allow_html=True))("""<style>
 [class*="st-key-kpi"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: .5rem; }
 [class*="st-key-kpi"] [data-testid="stColumn"], [class*="st-key-kpi"] [data-testid="column"] {
     min-width: 0 !important; width: calc(33.3% - .35rem) !important; flex: 1 1 0 !important; }
@@ -301,7 +301,7 @@ st.markdown("""<style>
 [class*="st-key-kpi"] [data-testid="stMetricLabel"] p { font-size: .75rem; white-space: normal; line-height: 1.2; }
 [class*="st-key-kpi"] [data-testid="stMetricValue"] { font-size: 1.15rem; }
 [class*="st-key-kpi"] [data-testid="stMetricDelta"] { font-size: .7rem; }
-</style>""", unsafe_allow_html=True)
+</style>""")
 
 cards = [("שווי נקי", money(nw_now), None),
          ("סה״כ הושקע", money(invested_now), None),
@@ -461,13 +461,23 @@ with t5:
         return df[mask].usd.sum() / df.usd.sum() * 100 if df.usd.sum() else 0.0
 
     def cards(items):
-        """Insight cards: (icon, big number, title, sentence, tone) with tone good / bad / None."""
+        """Insight cards: (icon, big number, title, sentence, tone) with tone good / bad / None.
+        Styles are inline so the cards look right even if the page-wide CSS doesn't load."""
+        edge = {"good": "#2e9e5b", "bad": "#d9534f"}
+        num = {"good": "#3fbf73", "bad": "#ef6b66"}
         html = []
         for icon, big, title, text, tone in items:
-            html.append(f'<div class="ins-card {tone or ""}"><div class="ins-top"><span class="ins-icon">{icon}</span>'
-                        f'<span class="ins-big">{big}</span></div><div class="ins-title">{title}</div>'
-                        f'<div class="ins-text">{text}</div></div>')
-        st.markdown('<div class="ins-grid">' + "".join(html) + "</div>", unsafe_allow_html=True)
+            html.append(
+                f'<div dir="rtl" style="background:rgba(128,128,128,.10);border-radius:12px;padding:10px 12px;'
+                f'border-right:4px solid {edge.get(tone, "rgba(128,128,128,.35)")};text-align:right">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
+                f'<span style="font-size:1.2rem">{icon}</span>'
+                f'<span dir="ltr" style="font-size:1.45rem;font-weight:700;color:{num.get(tone, "inherit")};'
+                f'font-variant-numeric:tabular-nums">{big}</span></div>'
+                f'<div style="font-weight:600;font-size:.92rem;margin-top:4px">{title}</div>'
+                f'<div style="font-size:.8rem;opacity:.75;line-height:1.45;margin-top:3px">{text}</div></div>')
+        st.markdown('<div dir="rtl" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));'
+                    'gap:10px;margin:6px 0 16px">' + "".join(html) + "</div>", unsafe_allow_html=True)
 
     cash_fmt = lambda v: money(v * fx_now).replace("$", "&#36;")      # same, inside HTML cards
 
