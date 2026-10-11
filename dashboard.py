@@ -172,6 +172,8 @@ if len(present) > 1:
 start = min(t.timestamp for t in txs).strftime("%Y-%m-%d")
 idx = pd.date_range(start, datetime.now().date(), freq="D")
 
+CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
+he = lambda c: CLS_HE.get(c, c)
 SECTIONS = ["📊 שווי היסטורי", "🆚 השוואה למדדים", "🥧 הקצאה", "📋 נכסים", "💡 תובנות", "📐 Power Law"]
 with menu_pop:
     st.divider()
@@ -179,14 +181,14 @@ with menu_pop:
     st.divider()
     st.markdown("**⚙️ הגדרות**")
     classes = sorted({a[2] for a in assets.values()})
-    sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes)
+    sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes, format_func=he)
     BENCH = {"BTC": "BTC-USD", "SPY": "SPY", "QQQ": "QQQ", "TQQQ": "TQQQ"}   # label -> Yahoo ticker
     bench = st.multiselect("מדדי ייחוס", list(BENCH), default=list(BENCH))
     dca_on = st.checkbox("השוואת BTC ל-DCA יומי", value=True,
                          help="הכסף שהשקעת בביטקוין בלבד, מחולק שווה על כל יום מהרכישה הראשונה של BTC ועד היום")
     st.subheader("הקצאת יעד (%)")
     default_t = {"equity": 50, "crypto": 35, "cash": 15}
-    targets = {c: st.slider(c, 0, 100, default_t.get(c, 0)) for c in classes}
+    targets = {c: st.slider(he(c), 0, 100, default_t.get(c, 0), key=f"target_{c}") for c in classes}
     if sum(targets.values()) != 100:
         st.warning(f"סכום היעדים: {sum(targets.values())}% (אמור להיות 100%)")
     if is_demo:
@@ -250,8 +252,10 @@ positions = E.build_positions(tx_f)
 summ = E.summarize(positions, {a: D(str(prices[a].iloc[-1])) for a in ids})
 
 real_tx = [t for t in tx_f if not t.notes.startswith("Network fee")]
-realized_sales = sum((p.realized_pnl for p in E.build_positions(real_tx).values()), D(0))
-net_fee_loss = summ.realized - realized_sales
+realized_no_net = sum((p.realized_pnl for p in E.build_positions(real_tx).values()), D(0))
+net_fee_loss = summ.realized - realized_no_net                  # bitcoin network + withdrawal fees only
+# "realized from sales": also without the account fees (IBI management / handling)
+realized_sales = sum((p.realized_pnl for p in E.build_positions([t for t in real_tx if t.type != "FEE"]).values()), D(0))
 no_onchain = [t for t in tx_f if not t.notes.startswith("Network fee (on-chain)")]
 realized_no_onchain = sum((p.realized_pnl for p in E.build_positions(no_onchain).values()), D(0))
 onchain_loss = summ.realized - realized_no_onchain
@@ -328,7 +332,7 @@ cards = [("שווי נקי", money(nw_now), None),
          ("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%"),
          ("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now), None),
          ("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה"),
-         ("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%", None)]
+         ("ירידה מקסימלית מהשיא", f"{E.max_drawdown(twr) * 100:.1f}%", None)]
 if A.COLD in chosen:                           # bitcoin network fees exist only in the cold wallet
     cards += [("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now), None),
               ("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now), None)]
@@ -480,7 +484,7 @@ if section == SECTIONS[1]:
     st.caption("הגרף מתחת מציג תשואה באחוזים ולא סכומים: כל הקווים מתחילים מ-100, "
                "כך ש-150 = עלייה של 50% מתחילת הטווח. לכן הוא זהה בדולרים ובשקלים.")
     sl = E.slice_range(twr, rng)
-    fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="Portfolio (TWR)", line=dict(width=3)))
+    fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="התיק שלי (TWR)", line=dict(width=3)))
     for b in bench:
         h = history(BENCH[b], start)
         if h.empty:
@@ -491,7 +495,7 @@ if section == SECTIONS[1]:
     if dca:
         d = E.slice_range(dca["twr"], rng)
         fig.add_trace(go.Scatter(x=d.index, y=E.rebased(d), name="DCA יומי ל-BTC", line=dict(dash="dash")))
-    fig.update_layout(height=450, yaxis_title="Rebased = 100", hovermode="x unified",
+    fig.update_layout(height=450, yaxis_title="100 = תחילת הטווח", hovermode="x unified",
                       legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10))
     st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
 
@@ -502,32 +506,43 @@ if section == SECTIONS[2]:
     cur = E.allocation(cls_val)
     drift = E.rebalancing_drift(cur, targets, float(summ.net_worth) * fx_now)
     c1, c2 = st.columns(2)
-    c1.plotly_chart(px.pie(names=list(cur), values=list(cur.values()), hole=.45, title="הקצאה נוכחית"),
+    c1.plotly_chart(px.pie(names=[he(c) for c in cur], values=list(cur.values()), hole=.45, title="הקצאה נוכחית"),
                     use_container_width=True)
-    bar = go.Figure([go.Bar(x=drift.index, y=drift.current_pct, name="נוכחי"),
-                     go.Bar(x=drift.index, y=drift.target_pct, name="יעד")])
+    bar = go.Figure([go.Bar(x=[he(c) for c in drift.index], y=drift.current_pct, name="נוכחי"),
+                     go.Bar(x=[he(c) for c in drift.index], y=drift.target_pct, name="יעד")])
     bar.update_layout(barmode="group", title="נוכחי מול יעד")
     c2.plotly_chart(bar, use_container_width=True)
-    st.dataframe(drift.style.format({"current_pct": "{:.1f}", "target_pct": "{:.1f}",
-                                     "drift_pp": "{:+.1f}", "rebalance_usd": f"{sym}{{:+,.0f}}"})
-                 .background_gradient(subset=["drift_pp"], cmap="RdYlGn_r"), use_container_width=True)
+    dr = drift.rename(index=he, columns={"current_pct": "נוכחי %", "target_pct": "יעד %", "drift_pp": "סטייה (נק׳ אחוז)",
+                                         "rebalance_usd": f"לאיזון ({sym})"})
+    st.dataframe(dr.style.format({"נוכחי %": "{:.1f}", "יעד %": "{:.1f}", "סטייה (נק׳ אחוז)": "{:+.1f}",
+                                  f"לאיזון ({sym})": f"{sym}{{:+,.0f}}"})
+                 .background_gradient(subset=["סטייה (נק׳ אחוז)"], cmap="RdYlGn_r"), use_container_width=True)
+    st.caption("לאיזון: כמה לקנות (+) או למכור (-) מכל סוג כדי להגיע ליעד. היעדים נקבעים בתפריט ☰.")
 
 if section == SECTIONS[3]:
     rows = []
     for a in ids:
+        if assets[a][0] == "CASH":                        # only carries account fees, nothing held
+            continue
         b, p = summ.by_asset[a], prices[a]
         cost_c = float(positions[a].cost_basis) * afx[a]
         # net P/L after fees: unrealized + realized (realized carries the network/withdrawal fee losses)
         unreal_c = float(b["value"]) * fx_now - cost_c + float(b["realized"]) * afx[a]
         paid_c = float(positions[a].total_invested) * afx[a]
         held = p[vals[a] > 0] if (vals[a] > 0).any() else p
-        rows.append({"נכס": assets[a][0], "סוג": assets[a][2], "כמות": float(b["qty"]),
+        rows.append({"נכס": assets[a][0], "סוג": he(assets[a][2]), "כמות": float(b["qty"]),
                      "עלות ממוצעת": float(b["avg_cost"]) * afx[a], "מחיר": float(b["price"]) * fx_now,
                      "שווי": float(b["value"]) * fx_now, "רווח/הפסד": unreal_c,
                      "רווח/הפסד %": unreal_c / paid_c * 100 if paid_c else 0.0, "רווח ממומש": float(b["realized"]) * fx_now,
-                     "הכנסות": float(b["income"]) * fx_now,
-                     "מרחק מ-ATH %": E.distance_from_ath(p) * 100, "Max DD %": E.max_drawdown(held) * 100})
-    st.dataframe(pd.DataFrame(rows).style.format(precision=2), use_container_width=True, hide_index=True)
+                     "מרחק מהשיא %": E.distance_from_ath(p) * 100, "ירידה מקס׳ %": E.max_drawdown(held) * 100})
+    tbl = pd.DataFrame(rows).sort_values("שווי", ascending=False) if rows else pd.DataFrame(rows)
+    st.dataframe(tbl.style.format({"כמות": lambda v: f"{v:,.8f}".rstrip("0").rstrip(".") if v else "0",
+                                   "עלות ממוצעת": f"{sym}{{:,.2f}}", "מחיר": f"{sym}{{:,.2f}}", "שווי": f"{sym}{{:,.0f}}",
+                                   "רווח/הפסד": f"{sym}{{:+,.0f}}", "רווח/הפסד %": "{:+.1f}%",
+                                   "רווח ממומש": f"{sym}{{:+,.0f}}", "מרחק מהשיא %": "{:.1f}%",
+                                   "ירידה מקס׳ %": "{:.1f}%"}),
+                 use_container_width=True, hide_index=True)
+    st.caption("ממוין לפי שווי. נכסים שנמכרו לגמרי מופיעים עם כמות 0 ועם הרווח הממומש שלהם.")
 
 if section == SECTIONS[4]:
     # "$" must be escaped in Streamlit markdown, otherwise "$...$" turns into a math formula
@@ -649,13 +664,13 @@ if section == SECTIONS[4]:
             if not k:
                 continue
             dd = [pd.Timestamp(t.timestamp).normalize().tz_localize(None) for t in k]
-            usd_amt = [float(t.amount * t.price_per_unit) for t in k]
+            usd_amt = [float(t.amount * t.price_per_unit) * fx_now for t in k]
             mx = max(usd_amt)
             fm.add_trace(go.Scatter(x=dd, y=[float(ps.get(d, float("nan"))) for d in dd], mode="markers", name=label,
                                     marker=dict(color=color, symbol=symbol, line=dict(width=0),
                                                 size=[8 + 16 * (u / mx) ** 0.5 for u in usd_amt]),
                                     customdata=usd_amt,
-                                    hovertemplate=label + " $%{customdata:,.0f}<extra></extra>"))
+                                    hovertemplate=label + " " + sym + "%{customdata:,.0f}<extra></extra>"))
         fm.update_layout(height=380, hovermode="closest", legend=dict(orientation="h", y=-0.2),
                          margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fm, use_container_width=True, config=CHART_CFG)
@@ -892,6 +907,14 @@ if section == SECTIONS[5]:
                      .style.format({"גבול אזור ההגדלה": "${:,.0f}", "קו המגמה": "${:,.0f}"}),
                      use_container_width=True, hide_index=True)
 
+TYPE_HE = {"BUY": "קנייה", "SELL": "מכירה", "FEE": "עמלה", "TRANSFER": "העברה", "DIVIDEND": "דיבידנד",
+           "STAKING_REWARD": "תגמול"}
 with st.expander("📒 ספר עסקאות"):
-    st.dataframe(pd.DataFrame([{**t.__dict__, "asset": assets[t.asset_id][0]} for t in tx_f]),
+    log = pd.DataFrame([{"תאריך": pd.Timestamp(t.timestamp).date(), "תיק": A.account_of(t.notes),
+                         "נכס": assets[t.asset_id][0], "סוג": TYPE_HE.get(t.type, t.type),
+                         "כמות": float(t.amount), "מחיר ($)": float(t.price_per_unit), "עמלה ($)": float(t.fee),
+                         "הערות": t.notes} for t in tx_f]).sort_values("תאריך", ascending=False)
+    st.dataframe(log.style.format({"כמות": lambda v: f"{v:,.8f}".rstrip("0").rstrip(".") if v else "0",
+                                   "מחיר ($)": "{:,.2f}", "עמלה ($)": "{:,.2f}"}),
                  use_container_width=True, hide_index=True)
+    st.caption(f"{len(log)} שורות, החדשות למעלה.")
