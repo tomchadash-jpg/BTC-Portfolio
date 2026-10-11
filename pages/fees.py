@@ -85,8 +85,9 @@ with t1:
     wd = df[is_wd].copy()
     acct = df[df.type == "FEE"]          # account fees: management / handling / debit interest (IBI)
     if not acct.empty:
-        st.metric("דמי ניהול וטיפול (IBI)", f"${float(acct.fee.sum()):,.2f}",
-                  help="דמי ניהול, דמי טיפול חודשיים וריבית חובה בחשבונות IBI, מומרים לדולר")
+        st.metric("דמי ניהול וטיפול (IBI)", f"${float(acct.fee.sum()):,.2f}")
+        # a caption instead of a "?" tooltip: tooltips open on hover only, so they don't respond to a tap on iPhone
+        st.caption("דמי ניהול, דמי טיפול חודשיים וריבית חובה בחשבונות IBI, מומרים לדולר")
     if ex.empty and wd.empty:
         st.info("אין עמלות בורסה")
     else:

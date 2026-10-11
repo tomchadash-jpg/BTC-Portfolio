@@ -186,8 +186,9 @@ with menu_pop:
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes, format_func=he)
     BENCH = {"BTC": "BTC-USD", "SPY": "SPY", "QQQ": "QQQ", "TQQQ": "TQQQ"}   # label -> Yahoo ticker
     bench = st.multiselect("מדדי ייחוס", list(BENCH), default=list(BENCH))
-    dca_on = st.checkbox("השוואת BTC ל-DCA יומי", value=True,
-                         help="הכסף שהשקעת בביטקוין בלבד, מחולק שווה על כל יום מהרכישה הראשונה של BTC ועד היום")
+    dca_on = st.checkbox("השוואת BTC ל-DCA יומי", value=True)
+    # a caption instead of a "?" tooltip: tooltips open on hover only, so they don't respond to a tap on iPhone
+    st.caption("הכסף שהשקעת בביטקוין בלבד, מחולק שווה על כל יום מהרכישה הראשונה של BTC ועד היום")
     btc_goal = st.number_input("יעד ביטקוין (BTC)", min_value=0.01, value=2.1, step=0.1, format="%.2f", key="btc_goal")
     if is_demo:
         st.info("מצב דמו – הגדר DATABASE_URL ו-USER_ID לנתונים אמיתיים")
