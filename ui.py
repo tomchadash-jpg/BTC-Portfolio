@@ -28,8 +28,11 @@ _CSS = """
 [data-testid="stPopoverBody"] [data-testid^="stPageLink"] p, [data-testid="stPopoverBody"] [data-testid^="stPageLink"] span,
 [data-testid="stPopoverBody"] a[data-testid^="stPageLink"] p, [data-testid="stPopoverBody"] a[data-testid^="stPageLink"] span {
     font-size: 1.2rem !important; line-height: 1.5 !important; }
-[data-testid="stPopoverBody"] { position: fixed !important; inset: 3.6rem .5rem auto auto !important;
-    transform: none !important; max-height: 80vh; overflow-y: auto; }
+/* a full-height drawer on the right: top to bottom of the screen; tap outside it to close */
+[data-testid="stPopoverBody"] { position: fixed !important; inset: 0 0 0 auto !important; transform: none !important;
+    height: 100vh !important; height: 100dvh !important; max-height: none !important; overflow-y: auto;
+    border-radius: 0 !important; padding-top: max(1.2rem, env(safe-area-inset-top)) !important;
+    box-shadow: -8px 0 24px rgba(0,0,0,.45) !important; z-index: 1000 !important; }
 
 /* Insight cards */
 .ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }
