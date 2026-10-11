@@ -18,16 +18,16 @@ def top(overlap: bool = False):
     overlap=True pulls the next element (the page title) up into the same row; use it
     when that title is aligned to the left, so the two don't collide."""
     key = "topmenu_overlap" if overlap else "topmenu"
-    css = (f".st-key-{key} {{ display: flex; align-items: flex-start; direction: rtl; position: relative; z-index: 5;"
+    css = (f"[class*='st-key-{key}'] {{ display: flex; align-items: flex-start; direction: rtl; position: relative; z-index: 5;"
            f"{' margin-bottom: -3.4rem;' if overlap else ''} }}"
-           f".st-key-{key} [data-testid='stPopover'] {{ width: fit-content !important; margin-left: auto !important;"
+           f"[class*='st-key-{key}'] [data-testid='stPopover'] {{ width: fit-content !important; margin-left: auto !important;"
            f" margin-right: 0 !important; }}"
            # a plain, big ☰: no border/background, no little arrow next to it
-           f".st-key-{key} button, .st-key-{key} [data-testid='stPopoverButton'] {{ border: none !important; background: transparent !important;"
+           f"[class*='st-key-{key}'] button, .st-key-{key} [data-testid='stPopoverButton'] {{ border: none !important; background: transparent !important;"
            f" box-shadow: none !important; padding: 0 .2rem !important; min-height: 0 !important;"
            f" width: auto !important; }}"
-           f".st-key-{key} button p, .st-key-{key} button div {{ font-size: 2.2rem !important; line-height: 1 !important; margin: 0 !important; }}"
-           f".st-key-{key} button svg, .st-key-{key} button [data-testid='stIconMaterial'] {{ display: none !important; }}")
+           f"[class*='st-key-{key}'] button p, .st-key-{key} button div {{ font-size: 2.2rem !important; line-height: 1 !important; margin: 0 !important; }}"
+           f"[class*='st-key-{key}'] button svg, .st-key-{key} button [data-testid='stIconMaterial'] {{ display: none !important; }}")
     # inject through markdown as well as st.html: whichever this Streamlit version applies
     if hasattr(st, "html"):
         st.html(f"<style>{css}</style>")
