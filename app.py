@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
+import accounts as A
 import engine as E
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="📈")
@@ -104,11 +105,11 @@ def signed_qty(txs, aid, idx):
 
 
 def contributions(txs, idx):
-    """Daily money put in (BUY cost incl. fee) minus money taken out (SELL proceeds), in USD."""
+    """Daily money put in (BUY cost incl. fee, account fees) minus money taken out (SELL proceeds), in USD."""
     d = {}
     for t in txs:
         g, f = float(t.amount * t.price_per_unit), float(t.fee)
-        v = g + f if t.type == "BUY" else -(g - f) if t.type == "SELL" else 0.0
+        v = g + f if t.type == "BUY" else -(g - f) if t.type == "SELL" else f if t.type == "FEE" else 0.0
         if v:
             k = pd.Timestamp(t.timestamp).normalize().tz_localize(None)
             d[k] = d.get(k, 0.0) + v
@@ -128,6 +129,17 @@ if not txs:
     st.info("אין עסקאות עדיין. הוסף בעמוד add transaction בתפריט הצד")
     st.stop()
 
+st.title("📈 Portfolio Tracker")
+
+# ------------------------------ account sections ------------------------------
+ALL = "הכל"
+acct_txs = {a: [t for t in txs if A.account_of(t.notes) == a] for a in A.ORDER}
+present = [a for a in A.ORDER if acct_txs[a]]
+view = st.radio("תיק", [ALL] + present, horizontal=True) if len(present) > 1 else ALL
+if view != ALL:
+    txs = acct_txs[view]
+    assets = {a: v for a, v in assets.items() if any(t.asset_id == a for t in txs)}
+
 start = min(t.timestamp for t in txs).strftime("%Y-%m-%d")
 idx = pd.date_range(start, datetime.now().date(), freq="D")
 
@@ -146,7 +158,6 @@ with st.sidebar:
     if is_demo:
         st.info("מצב דמו – הגדר DATABASE_URL ו-USER_ID לנתונים אמיתיים")
 
-st.title("📈 Portfolio Tracker")
 c1, c2, c3 = st.columns([2, 3, 2])
 ccy = c1.radio("מטבע תצוגה", ["USD", "ILS"], horizontal=True)
 rng = c2.select_slider("טווח זמן", ["1M", "6M", "1Y", "YTD", "ALL"], value="ALL")
@@ -240,9 +251,18 @@ k[0].metric("שווי נקי", money(nw_now))
 k[1].metric("סה״כ הושקע", money(invested_now))
 k[2].metric("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%")
 k[3].metric("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now))
-k2 = st.columns(2)
-k2[0].metric("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now))
-k2[1].metric("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now))
+if view in (ALL, A.COLD):                       # bitcoin network fees exist only there
+    k2 = st.columns(2)
+    k2[0].metric("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now))
+    k2[1].metric("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now))
+if view == ALL and len(present) > 1:
+    st.subheader("לפי תיק")
+    ka = st.columns(len(present))
+    for i, a in enumerate(present):
+        at = [t for t in acct_txs[a] if assets[t.asset_id][2] in sel]
+        v = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) * fx_now
+        inv = float((contributions(at, idx) * fx).sum())
+        ka[i].metric(a, money(v), money(v - inv) + " רווח/הפסד" if inv else None)
 k3 = st.columns(2)
 k3[0].metric("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה (CAGR)")
 k3[1].metric("Max Drawdown", f"{E.max_drawdown(twr) * 100:.1f}%")
@@ -253,8 +273,9 @@ if held:
         b = summ.by_asset[a]
         avg = float(b["avg_cost"]) * afx[a]
         now = float(b["price"]) * fx_now
-        kc[i % len(kc)].metric(f"מחיר רכישה ממוצע – {assets[a][0]}", f"{sym}{avg:,.0f}",
-                               f"{(now / avg - 1) * 100:+.1f}% (מחיר היום {sym}{now:,.0f})")
+        fmt = (lambda x: f"{sym}{x:,.2f}") if avg < 100 else (lambda x: f"{sym}{x:,.0f}")
+        kc[i % len(kc)].metric(f"מחיר רכישה ממוצע – {assets[a][0]}", fmt(avg),
+                               f"{(now / avg - 1) * 100:+.1f}% (מחיר היום {fmt(now)})")
 if ccy == "ILS":
     st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
                "ולכן הרווח וההפסד כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")

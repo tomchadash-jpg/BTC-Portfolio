@@ -5,6 +5,8 @@ from decimal import Decimal as D
 import psycopg
 import streamlit as st
 
+import accounts as A
+
 st.set_page_config(page_title="הוסף עסקה", page_icon="➕")
 
 import ui
@@ -47,6 +49,7 @@ if not assets:
 
 labels = {f"{s} ({c})": i for i, s, c in assets}
 with st.form("tx", clear_on_submit=True):
+    acct = st.selectbox("תיק", A.ORDER, index=A.ORDER.index(A.COLD))
     a = st.selectbox("נכס", list(labels))
     typ = st.selectbox("סוג", ["BUY", "SELL", "STAKING_REWARD", "DIVIDEND", "FEE", "TRANSFER"])
     amount = st.number_input("כמות (יחידות)", min_value=0.0, format="%.8f")
@@ -61,7 +64,7 @@ with st.form("tx", clear_on_submit=True):
             q("""INSERT INTO transactions(user_id,asset_id,type,amount,price_per_unit,fee,currency,"timestamp",notes)
                  VALUES (%s,%s,%s::tx_type,%s,%s,%s,'USD',%s,%s)""",
               (UID, labels[a], typ, D(str(amount)), D(str(price)), D(str(fee)),
-               datetime.combine(d, time(12)), notes), fetch=False)
+               datetime.combine(d, time(12)), A.tag(acct, notes)), fetch=False)
             st.cache_data.clear()
             st.success("נשמר ✅")
 

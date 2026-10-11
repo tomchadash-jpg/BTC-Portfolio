@@ -81,6 +81,10 @@ t1, t2 = st.tabs(["🏦 עמלות בורסה", "⛓️ עמלות רשת"])
 with t1:
     ex = df[(df.type.isin(["BUY", "SELL"])) & (df.fee > 0) & (~df.notes.str.startswith("Network fee"))].copy()
     wd = df[is_wd].copy()
+    acct = df[df.type == "FEE"]          # account fees: management / handling / debit interest (IBI)
+    if not acct.empty:
+        st.metric("דמי ניהול וטיפול (IBI)", f"${float(acct.fee.sum()):,.2f}",
+                  help="דמי ניהול, דמי טיפול חודשיים וריבית חובה בחשבונות IBI, מומרים לדולר")
     if ex.empty and wd.empty:
         st.info("אין עמלות בורסה")
     else:
