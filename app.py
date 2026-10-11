@@ -173,7 +173,8 @@ with st.sidebar:
     st.title("⚙️ הגדרות")
     classes = sorted({a[2] for a in assets.values()})
     sel = st.multiselect("סינון לפי סוג נכס", classes, default=classes)
-    bench = st.multiselect("מדדי ייחוס", ["SPY", "QQQ", "BTC-USD"], default=["SPY", "QQQ", "BTC-USD"])
+    BENCH = {"BTC": "BTC-USD", "SPY": "SPY", "QQQ": "QQQ", "TQQQ": "TQQQ"}   # label -> Yahoo ticker
+    bench = st.multiselect("מדדי ייחוס", list(BENCH), default=list(BENCH))
     dca_on = st.checkbox("השוואת BTC ל-DCA יומי", value=True,
                          help="הכסף שהשקעת בביטקוין בלבד, מחולק שווה על כל יום מהרכישה הראשונה של BTC ועד היום")
     st.subheader("הקצאת יעד (%)")
@@ -400,7 +401,7 @@ with t2:
     sl = E.slice_range(twr, rng)
     fig = go.Figure(go.Scatter(x=sl.index, y=E.rebased(sl), name="Portfolio (TWR)", line=dict(width=3)))
     for b in bench:
-        h = history(b, start)
+        h = history(BENCH[b], start)
         if h.empty:
             st.warning(f"לא נמצאו מחירים עבור {b}")
             continue
