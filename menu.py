@@ -7,7 +7,6 @@ writing into the returned popover.
 import streamlit as st
 
 PAGES = [("dashboard.py", "התיק שלי", "📈"),
-         ("pages/add_transaction.py", "הוספת עסקה", "➕"),
          ("pages/import_csv.py", "ייבוא ומחיקה", "📥"),
          ("pages/fees.py", "עמלות", "💸")]
 

@@ -17,7 +17,6 @@ for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw"
 
 pg = st.navigation([
     st.Page("dashboard.py", title="התיק שלי", icon="📈", default=True),
-    st.Page("pages/add_transaction.py", title="הוספת עסקה", icon="➕"),
     st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon="📥"),
     st.Page("pages/fees.py", title="עמלות", icon="💸"),
 ], position="hidden")
