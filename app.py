@@ -116,6 +116,17 @@ def contributions(txs, idx):
     return pd.Series(d, dtype=float).reindex(idx).fillna(0.0)
 
 
+def cash_model(txs, idx):
+    """Money from outside vs. money recycled inside the portfolio.
+
+    Selling and buying something else a few days later is not new money: the proceeds wait
+    as cash. New money is needed only when spending goes above everything put in so far.
+    Returns (daily new money in, USD; idle cash balance, USD)."""
+    spent = contributions(txs, idx).cumsum()          # net spend so far (buys + fees - sells)
+    funded = spent.cummax().clip(lower=0.0)           # most that was ever needed from outside
+    return funded.diff().fillna(funded.iloc[0]), funded - spent
+
+
 def avg_fx(txs, idx, fx):
     """Weighted-average USD/ILS rate at which the given BUYs were made (1.0 in USD view)."""
     c = contributions([t for t in txs if t.type == "BUY"], idx)
@@ -203,9 +214,9 @@ for aid, (s, _, cls, api) in assets.items():
 
 tx_f = [t for t in txs if assets[t.asset_id][2] in sel]
 ids = [a for a in assets if assets[a][2] in sel]
-nw_usd = sum(vals[a] for a in ids)
-flows = E.external_flows(tx_f)
-twr = E.twr_index(nw_usd, flows)
+new_money, cash_usd = cash_model(tx_f, idx)
+nw_usd = sum(vals[a] for a in ids) + cash_usd       # holdings + proceeds waiting to be reinvested
+twr = E.twr_index(nw_usd, new_money)
 positions = E.build_positions(tx_f)
 summ = E.summarize(positions, {a: D(str(prices[a].iloc[-1])) for a in ids})
 
@@ -217,7 +228,7 @@ realized_no_onchain = sum((p.realized_pnl for p in E.build_positions(no_onchain)
 onchain_loss = summ.realized - realized_no_onchain
 withdrawal_loss = net_fee_loss - onchain_loss
 
-inv_cum = (contributions(tx_f, idx) * fx).cumsum()      # money invested so far, at each purchase-date rate
+inv_cum = (new_money * fx).cumsum()      # money put in from outside so far, at each day's rate
 invested_now = float(inv_cum.iloc[-1])
 
 # --- benchmark: the same total money, spread evenly over every day and bought in BTC (daily DCA) ---
@@ -226,7 +237,7 @@ if dca_on:
     btc_h = daily(history("BTC-USD", start), idx)
     if CG["BTC"] in live and not btc_h.isna().all():
         btc_h.iloc[-1] = live[CG["BTC"]]
-    total_usd = float(contributions(tx_f, idx).sum())
+    total_usd = float(new_money.sum())
     if total_usd > 0 and not btc_h.isna().any():
         per_day = total_usd / len(idx)
         dca_qty = (per_day / btc_h).cumsum()
@@ -235,7 +246,7 @@ if dca_on:
                "twr": E.twr_index(dca_usd, pd.Series(per_day, index=idx))}
     else:
         st.sidebar.warning("אין מספיק נתונים לחישוב DCA יומי")
-nw_now = float(summ.net_worth) * fx_now
+nw_now = (float(summ.net_worth) + float(cash_usd.iloc[-1])) * fx_now
 
 afx, unreal_ccy, cost_ccy = {}, 0.0, 0.0
 for a in ids:
@@ -290,8 +301,10 @@ if len(chosen) > 1:
     acards = []
     for a in chosen:
         at = [t for t in acct_txs[a] if assets[t.asset_id][2] in sel]
-        v = sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets) * fx_now
-        inv = float((contributions(at, idx) * fx).sum())
+        a_new, a_cash = cash_model(at, idx)
+        v = (sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets)
+             + float(a_cash.iloc[-1])) * fx_now
+        inv = float((a_new * fx).sum())
         acards.append((a, money(v), f"{money(v - inv)} ({(v - inv) / inv * 100:+.1f}%)" if inv else None))
     grid(acards, "kpi_accounts")
 
@@ -344,6 +357,8 @@ with t1:
                     yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False))
     st.plotly_chart(f, use_container_width=True, config=CHART_CFG)
     stack = pd.DataFrame({assets[a][0]: vals[a] * fx for a in ids})
+    if (cash_usd > 0.5).any():
+        stack["מזומן"] = cash_usd * fx
     st.plotly_chart(px.area(E.slice_range(stack, rng), height=350, title="שווי לפי נכס"), use_container_width=True)
 
 with t2:
