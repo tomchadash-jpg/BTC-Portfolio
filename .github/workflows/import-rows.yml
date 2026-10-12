@@ -1,0 +1,28 @@
+name: Import rows
+# Adds transactions to the database without opening the app. Started by Claude's morning
+# Gmail scan (or by hand from the Actions tab) with the rows as CSV text; duplicates are
+# skipped. Needs the DATABASE_URL and USER_ID repository secrets (same values as the
+# Streamlit secrets).
+on:
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: "CSV text: date,symbol,type,amount,price_per_unit,fee,currency,notes"
+        required: true
+permissions:
+  contents: read
+concurrency: import-rows
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "psycopg[binary]>=3.2"
+      - run: python scripts/import_rows.py
+        env:
+          IMPORT_ROWS: ${{ inputs.rows }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          USER_ID: ${{ secrets.USER_ID }}
