@@ -28,7 +28,7 @@ import powerlaw as PL
 for _m in (A, E, I, PL):
     importlib.reload(_m)
 
-st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=":material/show_chart:")
+st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="docs/icon-192.png")
 
 import ui
 ui.rtl()
@@ -154,7 +154,15 @@ if not txs:
     st.stop()
 
 menu_pop = menu.top(overlap=True)          # ☰ at the top right; the title sits on the left of the same row
-st.markdown("<h1 dir='ltr' style='text-align:left'>" + MI.format("show_chart") + " Portfolio Tracker</h1>",
+LOGO_ICON = ("<svg viewBox='0 0 64 64' width='1em' height='1em' role='img' aria-label='Portfolio Tracker' "
+             "style='vertical-align:-0.12em;margin-right:0.35em'>"
+             "<rect width='64' height='64' rx='15' fill='#D97757'/>"
+             "<path d='M13 44 L25 31 L33 37 L50 19' fill='none' stroke='#0E1117' stroke-width='5.5' "
+             "stroke-linecap='round' stroke-linejoin='round'/>"
+             "<circle cx='50' cy='19' r='4.5' fill='#0E1117'/></svg>")
+st.markdown("<h1 dir='ltr' style='text-align:left;letter-spacing:-0.03em'>" + LOGO_ICON +
+            "<span style='font-weight:700'>Portfolio</span>"
+            "<span style='font-weight:400;opacity:0.6'> Tracker</span></h1>",
             unsafe_allow_html=True)
 
 # ------------------------------ account sections ------------------------------
