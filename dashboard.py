@@ -435,14 +435,53 @@ if section == SECTIONS[0]:
                     yaxis=dict(title=f"({ccy})"),
                     yaxis2=dict(title=f"מחיר BTC ({ccy})", overlaying="y", side="right", showgrid=False))
     st.plotly_chart(f, use_container_width=True, config=CHART_CFG)
-    # --- month by month: how much the market moved the portfolio vs. new money put in ---
+    # --- month by month / year by year: how much the market moved the portfolio vs. new money put in ---
     val_c = nw_usd * fx                                   # value in display currency, daily
     flow_c = new_money * fx                               # new money in, at each day's rate
-    m_end = val_c.resample("ME").last()
-    m_in = flow_c.resample("ME").sum()
-    m_gain = m_end - m_end.shift(1).fillna(0.0) - m_in    # change in value that didn't come from new money
-    monthly = pd.DataFrame({"gain": m_gain, "new": m_in})
-    monthly = E.slice_range(monthly, rng) if rng != "ALL" else monthly
+    period = st.radio("תקופה", ["חודשי", "שנתי"], horizontal=True, key="perf_period")
+    if period == "שנתי":
+        y_end = val_c.resample("YE").last()
+        y_in = flow_c.resample("YE").sum()
+        y_start = y_end.shift(1).fillna(0.0)
+        y_gain = y_end - y_start - y_in
+        t_end = twr.resample("YE").last()
+        y_ret = (t_end / t_end.shift(1).fillna(1.0) - 1) * 100   # TWR % for each calendar year (USD)
+        yearly = pd.DataFrame({"gain": y_gain, "new": y_in, "ret": y_ret, "start": y_start, "end": y_end})
+        first, last = val_c.index[0], val_c.index[-1]
+        ylabels = [f"{d.year}" + (" (עד היום)" if d.year == last.year else "")
+                   + (f" (מ-{first:%m/%y})" if d.year == first.year and first.month > 1 else "")
+                   for d in yearly.index]
+        fy = go.Figure()
+        fy.add_trace(go.Bar(x=ylabels, y=yearly.gain, name="שינוי מהשוק",
+                            marker_color=["#2e9e5b" if v >= 0 else "#d9534f" for v in yearly.gain],
+                            text=[f"{r:+.1f}%" for r in yearly.ret], textposition="outside",
+                            customdata=yearly.ret,
+                            hovertemplate=sym + "%{y:,.0f} · TWR %{customdata:+.1f}%<extra>שינוי מהשוק</extra>"))
+        fy.add_trace(go.Scatter(x=ylabels, y=yearly.new, name="כסף חדש שהוכנס", mode="lines+markers",
+                                line=dict(color="#9aa0a6", width=1.5, dash="dot"), marker=dict(size=6),
+                                hovertemplate=sym + "%{y:,.0f}<extra>כסף חדש</extra>"))
+        fy.update_layout(title=f"שנה אחרי שנה ({ccy})", height=380, hovermode="x unified", bargap=0.35,
+                         legend=dict(orientation="h", y=-0.2), margin=dict(l=10, r=10),
+                         yaxis=dict(tickprefix=sym, title=None), xaxis=dict(title=None, type="category"))
+        st.plotly_chart(fy, use_container_width=True, config=CHART_CFG)
+        st.dataframe(pd.DataFrame({
+            "שנה": ylabels,
+            "שווי בתחילת השנה": [money(float(v)) for v in yearly.start],
+            "כסף חדש": [money(float(v)) for v in yearly.new],
+            "שינוי מהשוק": [money(float(v)) for v in yearly.gain],
+            "שווי בסוף השנה": [money(float(v)) for v in yearly.end],
+            "תשואה (TWR)": [f"{r:+.1f}%" for r in yearly.ret]}),
+            hide_index=True, use_container_width=True)
+        st.caption("עמודה = כמה התיק עלה או ירד באותה שנה בגלל תנודות המחיר בלבד, בלי הכסף שהוספת. "
+                   "האחוז מעל העמודה הוא התשואה של אותה שנה (TWR, בדולרים, לא מושפעת מהפקדות). "
+                   "השנה הנוכחית והשנה הראשונה הן חלקיות. התצוגה השנתית מראה תמיד את כל השנים.")
+    monthly = pd.DataFrame()
+    if period == "חודשי":
+        m_end = val_c.resample("ME").last()
+        m_in = flow_c.resample("ME").sum()
+        m_gain = m_end - m_end.shift(1).fillna(0.0) - m_in    # change in value that didn't come from new money
+        monthly = pd.DataFrame({"gain": m_gain, "new": m_in})
+        monthly = E.slice_range(monthly, rng) if rng != "ALL" else monthly
     if len(monthly):
         labels = [d.strftime("%m/%y") for d in monthly.index]
         fmn = go.Figure()
