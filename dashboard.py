@@ -28,7 +28,7 @@ import powerlaw as PL
 for _m in (A, E, I, PL):
     importlib.reload(_m)
 
-st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon="docs/icon-192.png")
+st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "icon-192.png"))
 
 import ui
 ui.rtl()
