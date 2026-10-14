@@ -23,6 +23,7 @@ gate.require_login()  # nothing below runs without the password
 import menu
 menu.top()
 import accounts as A
+import exchange_cash as XC
 
 TZ = ZoneInfo("Asia/Jerusalem")
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
@@ -56,10 +57,13 @@ def load():
     df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(TZ).dt.tz_localize(None)
     df["date"] = df["ts"].dt.date
     df["section"] = df["notes"].map(A.account_of)
-    return df, assets, bank
+    cash = pd.DataFrame(XC.ledger(), columns=["date", "exchange", "kind", "amount", "note"])
+    cash["amount"] = cash["amount"].astype(float)
+    cash["balance"] = cash.groupby("exchange")["amount"].cumsum()   # running balance over the whole history
+    return df, assets, bank, cash
 
 
-df, assets, bank = load()
+df, assets, bank, cash = load()
 
 st.title(":material/download: ייצוא נתונים")
 if df.empty:
@@ -75,6 +79,8 @@ d_from = c1.date_input("מתאריך", first, min_value=first, max_value=last, f
 d_to = c2.date_input("עד תאריך", last, min_value=first, max_value=last, format="DD/MM/YYYY")
 
 sel = df[df["section"].isin(sections) & (df["date"] >= d_from) & (df["date"] <= d_to)]
+# shekels on the exchange belong with the cold-wallet (bitcoin) section
+cash_sel = cash[(cash["date"] >= d_from) & (cash["date"] <= d_to)] if A.COLD in sections else cash.iloc[0:0]
 st.write(f"**{len(sel)}** עסקאות נבחרו מתוך {len(df)}")
 if sel.empty:
     st.warning("אין עסקאות בבחירה הזו.")
@@ -104,7 +110,10 @@ def holdings(d: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["חלק", "סימול"], key=lambda s: s.map(order) if s.name == "חלק" else s)
 
 
-def workbook(d: pd.DataFrame) -> bytes:
+CASH_HE = {"DEPOSIT": "הפקדה", "SPEND": "קנייה", "WITHDRAW": "משיכה", "ADJUST": "תיקון"}
+
+
+def workbook(d: pd.DataFrame, cash_d: pd.DataFrame) -> bytes:
     tx = pd.DataFrame({
         "תאריך": d["ts"], "חלק": d["section"], "סימול": d["symbol"], "נכס": d["name"],
         "סוג": d["type"].map(TYPE_HE).fillna(d["type"]), "כמות": d["amount"], "מחיר ליחידה": d["price"],
@@ -114,7 +123,11 @@ def workbook(d: pd.DataFrame) -> bytes:
     bank_df = pd.DataFrame([(pd.Timestamp(t).tz_convert(TZ).tz_localize(None), float(b)) for t, b in bank],
                            columns=["עודכן", "יתרה (₪)"])
     assets_df = pd.DataFrame(assets, columns=["סימול", "שם", "סוג נכס", "טיקר", "מטבע בסיס"])
-    sheets = {"עסקאות": tx, "אחזקות": holdings(d), "יתרת עו\"ש": bank_df, "נכסים": assets_df}
+    cash_df = pd.DataFrame({"תאריך": pd.to_datetime(cash_d["date"]), "בורסה": cash_d["exchange"],
+                            "סוג": cash_d["kind"].map(CASH_HE).fillna(cash_d["kind"]), "סכום (₪)": cash_d["amount"],
+                            "יתרה (₪)": cash_d["balance"], "הערות": cash_d["note"]})
+    sheets = {"עסקאות": tx, "אחזקות": holdings(d), "מזומן בבורסה": cash_df, "יתרת עו\"ש": bank_df,
+              "נכסים": assets_df}
 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
@@ -136,24 +149,32 @@ def workbook(d: pd.DataFrame) -> bytes:
 
 
 # ---------------- CSV in the import format ----------------
-def import_csv(d: pd.DataFrame) -> bytes:
+def import_csv(d: pd.DataFrame, cash_d: pd.DataFrame) -> bytes:
     out = io.StringIO()
     w = csv.writer(out)
     w.writerow(IMPORT_COLS)
     num = lambda x: format(x, ".10f").rstrip("0").rstrip(".") or "0"
     for r in d.itertuples():
         w.writerow([r.date.isoformat(), r.symbol, r.type, num(r.amount), num(r.price), num(r.fee), r.currency, r.notes])
+    for r in cash_d.itertuples():
+        if r.kind == "ADJUST":          # a correction re-imports as a deposit or a withdrawal of the difference
+            kind = "DEPOSIT" if r.amount > 0 else "WITHDRAW"
+        else:
+            kind = r.kind
+        note = r.note if A.platform_of(r.note) else f"{r.exchange} · {r.note}".rstrip(" ·")
+        w.writerow([r.date.isoformat(), XC.SYMBOL, kind, num(abs(r.amount)), "1", "0", "ILS", note])
     return ("﻿" + out.getvalue()).encode("utf-8")   # BOM so Excel/Numbers show Hebrew correctly
 
 
 stamp = date.today().strftime("%Y-%m-%d")
-st.download_button("הורד קובץ Excel", workbook(sel), file_name=f"portfolio-{stamp}.xlsx",
+st.download_button("הורד קובץ Excel", workbook(sel, cash_sel), file_name=f"portfolio-{stamp}.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    icon=":material/table_view:", type="primary", use_container_width=True)
-st.caption("ארבעה גיליונות: עסקאות, אחזקות לפי חלק בתיק, היסטוריית יתרת העו\"ש, ורשימת הנכסים. "
+st.caption("גיליונות: עסקאות, אחזקות לפי חלק בתיק, מזומן בבורסה (הפקדות וקניות בשקלים), היסטוריית יתרת העו\"ש, "
+           "ורשימת הנכסים. "
            "הסכומים במטבע המקורי של כל עסקה.")
 
-st.download_button("הורד CSV לגיבוי", import_csv(sel), file_name=f"portfolio-backup-{stamp}.csv",
+st.download_button("הורד CSV לגיבוי", import_csv(sel, cash_sel), file_name=f"portfolio-backup-{stamp}.csv",
                    mime="text/csv", icon=":material/backup:", use_container_width=True)
 st.caption("באותו פורמט של מסך הייבוא, כך שאפשר לטעון אותו בחזרה לאפליקציה.")
 

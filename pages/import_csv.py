@@ -15,6 +15,7 @@ import gate
 gate.require_login()  # nothing below runs without the password
 import menu
 menu.top()
+import exchange_cash as XC
 
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 URL, UID = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
@@ -39,7 +40,8 @@ DEFAULTS = {  # symbol -> (name, asset_class, Yahoo ticker) for assets created o
 }
 
 with tab_imp:
-    st.caption("עמודות: date, symbol, type, amount, price_per_unit, fee, currency, notes. שורות שכבר קיימות מדולגות.")
+    st.caption("עמודות: date, symbol, type, amount, price_per_unit, fee, currency, notes. שורות שכבר קיימות מדולגות. "
+               "שורות עם symbol=ILS הן מזומן בבורסה (DEPOSIT / SPEND / WITHDRAW, הסכום בשקלים).")
     up = st.file_uploader("בחר קובץ CSV", type="csv")
     replace = st.checkbox("מחק את כל העסקאות הקיימות לפני הייבוא")
     if up:
@@ -47,7 +49,10 @@ with tab_imp:
         st.write(f"נמצאו {len(rows)} שורות")
         st.dataframe(rows, use_container_width=True, hide_index=True)
         if st.button("ייבא עכשיו", type="primary"):
+            cash_rows = [r for r in rows if XC.is_cash_row(r)]
+            rows = [r for r in rows if not XC.is_cash_row(r)]
             with psycopg.connect(URL) as c:
+                cash_added, cash_skipped = XC.add_rows(c, cash_rows)
                 if replace:
                     c.execute("DELETE FROM transactions WHERE user_id = %s", (UID,))
                 assets = {s: i for i, s in c.execute("SELECT id, symbol FROM assets")}
@@ -73,6 +78,9 @@ with tab_imp:
                     added += 1
             st.cache_data.clear()
             st.success(f"נוספו {added} שורות, דולגו {skipped} שורות קיימות", icon=":material/check_circle:")
+            if cash_rows:
+                st.success(f"מזומן בבורסה: נוספו {cash_added} שורות, דולגו {cash_skipped} קיימות",
+                           icon=":material/payments:")
 
 with tab_del:
     with psycopg.connect(URL) as c:

@@ -19,13 +19,14 @@ import importlib
 
 import accounts as A
 import engine as E
+import exchange_cash as XC
 import insights as I
 import menu
 import powerlaw as PL
 
 # Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
 # modules in memory; reload them so new functions are always there.
-for _m in (A, E, I, PL):
+for _m in (A, E, I, PL, XC):
     importlib.reload(_m)
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "icon-192.png"))
@@ -85,6 +86,17 @@ def load_bank():
         r = c.execute("SELECT balance_ils, updated_at FROM bank_balances WHERE user_id=%s "
                       "ORDER BY updated_at DESC LIMIT 1", (uid,)).fetchone()
     return (float(r[0]), r[1]) if r else (None, None)
+
+
+@st.cache_data(ttl=300)
+def load_xcash():
+    """Shekels waiting on each exchange: {exchange: (balance_ils, last_date)}."""
+    if not (clean(os.getenv("DATABASE_URL")) and clean(os.getenv("USER_ID"))):
+        return {}
+    return XC.balances()
+
+
+EX_HE = {"Coinbox": "קוינבוקס", "Bits of Gold": "ביטס אוף גולד", "Horizon": "הורייזן"}
 
 
 def save_bank(balance: float):
@@ -389,28 +401,45 @@ if btc_held:                                   # bitcoin in the cold wallet: amo
         cards.insert(0, ("בארנק הקר", btc_fmt(q), money(q * px_btc)))
 grid(cards, "kpi_main")
 
-# --- checking account (Mizrahi), entered by hand; shown next to the portfolio, not part of its returns ---
+# --- cash outside the investments: checking account (Mizrahi, entered by hand) and shekels waiting
+#     on an exchange (Coinbox, from the e-mail scan). Shown next to the portfolio, not part of its returns ---
 if not is_demo:
     bank_ils, bank_at = load_bank()
+    xcash = load_xcash()
     if ccy == "ILS":
         ils_per_disp = fx_now
     else:
         _ils = history("ILS=X", start)
         ils_per_disp = float(_ils.iloc[-1]) if not _ils.empty else 3.0
-    bcol, bbtn = st.columns([5, 2], vertical_alignment="bottom")
-    with bcol:
-        if bank_ils is not None:
-            bank_disp = bank_ils / ils_per_disp if ccy == "USD" else bank_ils
-            when = bank_at.astimezone(ZoneInfo("Asia/Jerusalem"))
-            grid([("עו״ש מזרחי", f"₪{bank_ils:,.0f}", f"עודכן {when:%d/%m}"),
-                  ("שווי כולל עו״ש", money(nw_now + bank_disp), None)], "kpi_bank", per_row=2)
-        else:
-            st.caption("יתרת העו״ש עוד לא הוזנה")
-    with bbtn.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
+    ccards = []
+    if bank_ils is not None:
+        when = bank_at.astimezone(ZoneInfo("Asia/Jerusalem"))
+        ccards.append(("עו״ש מזרחי", f"₪{bank_ils:,.0f}", f"עודכן {when:%d/%m}"))
+    for ex, (bal, last) in xcash.items():
+        ccards.append((f"מזומן ב{EX_HE.get(ex, ex)}", f"₪{bal:,.0f}", f"עודכן {last:%d/%m}"))
+    if ccards:
+        extra_ils = (bank_ils or 0.0) + sum(b for b, _ in xcash.values())
+        extra_disp = extra_ils / ils_per_disp if ccy == "USD" else extra_ils
+        ccards.append(("שווי כולל מזומן", money(nw_now + extra_disp), None))
+        grid(ccards, "kpi_bank", per_row=min(len(ccards), 3))
+    else:
+        st.caption("יתרות המזומן עוד לא הוזנו")
+    b1, b2 = st.columns(2)
+    with b1.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
         with st.form("bank_form", border=False):
             new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
             if st.form_submit_button("שמירה", type="primary", use_container_width=True):
                 save_bank(new_bal)
+                st.rerun()
+    with b2.popover("תיקון קוינבוקס", icon=":material/payments:", use_container_width=True):
+        st.caption("היתרה מתעדכנת לבד מהמיילים (הפקדות וקניות). אם היא לא תואמת למה שמופיע בקוינבוקס, "
+                   "הזן כאן את היתרה הנכונה.")
+        with st.form("xcash_form", border=False):
+            cur = xcash.get("Coinbox", (0.0, None))[0]
+            new_x = st.number_input("יתרת שקלים בקוינבוקס (₪)", value=float(cur), step=10.0, format="%.2f")
+            if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                XC.set_balance("Coinbox", new_x)
+                load_xcash.clear()
                 st.rerun()
 
 if len(chosen) > 1:
