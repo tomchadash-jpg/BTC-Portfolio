@@ -66,6 +66,36 @@ def load_ledger():
     return ({x[0]: x[1:] for x in a}, [E.Tx(*x) for x in r]), False
 
 
+BANK_DDL = """CREATE TABLE IF NOT EXISTS bank_balances (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     UUID          NOT NULL,
+    balance_ils NUMERIC(14,2) NOT NULL,
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now())"""
+
+
+@st.cache_data(ttl=300)
+def load_bank():
+    """Latest checking-account balance (ILS) and when it was entered; (None, None) if never set."""
+    url, uid = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
+    if not (url and uid):
+        return None, None
+    import psycopg
+    with psycopg.connect(url) as c:
+        c.execute(BANK_DDL)
+        r = c.execute("SELECT balance_ils, updated_at FROM bank_balances WHERE user_id=%s "
+                      "ORDER BY updated_at DESC LIMIT 1", (uid,)).fetchone()
+    return (float(r[0]), r[1]) if r else (None, None)
+
+
+def save_bank(balance: float):
+    import psycopg
+    with psycopg.connect(clean(os.getenv("DATABASE_URL"))) as c:
+        c.execute(BANK_DDL)
+        c.execute("INSERT INTO bank_balances(user_id, balance_ils) VALUES (%s, %s)",
+                  (clean(os.getenv("USER_ID")), balance))
+    load_bank.clear()
+
+
 @st.cache_data(ttl=300, show_spinner="מושך מחירים...")
 def history(ticker: str, start: str) -> pd.Series:
     if ticker == "CASH":
@@ -358,6 +388,30 @@ if btc_held:                                   # bitcoin in the cold wallet: amo
     else:
         cards.insert(0, ("בארנק הקר", btc_fmt(q), money(q * px_btc)))
 grid(cards, "kpi_main")
+
+# --- checking account (Mizrahi), entered by hand; shown next to the portfolio, not part of its returns ---
+if not is_demo:
+    bank_ils, bank_at = load_bank()
+    if ccy == "ILS":
+        ils_per_disp = fx_now
+    else:
+        _ils = history("ILS=X", start)
+        ils_per_disp = float(_ils.iloc[-1]) if not _ils.empty else 3.0
+    bcol, bbtn = st.columns([5, 2], vertical_alignment="bottom")
+    with bcol:
+        if bank_ils is not None:
+            bank_disp = bank_ils / ils_per_disp if ccy == "USD" else bank_ils
+            when = bank_at.astimezone(ZoneInfo("Asia/Jerusalem"))
+            grid([("עו״ש מזרחי", f"₪{bank_ils:,.0f}", f"עודכן {when:%d/%m}"),
+                  ("שווי כולל עו״ש", money(nw_now + bank_disp), None)], "kpi_bank", per_row=2)
+        else:
+            st.caption("יתרת העו״ש עוד לא הוזנה")
+    with bbtn.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
+        with st.form("bank_form", border=False):
+            new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
+            if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                save_bank(new_bal)
+                st.rerun()
 
 if len(chosen) > 1:
     st.subheader("לפי תיק")

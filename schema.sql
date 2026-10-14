@@ -52,6 +52,15 @@ CREATE TABLE target_allocations (
     PRIMARY KEY (user_id, asset_class)
 );
 
+-- Checking-account balance, entered by hand in the app (latest row is the current balance).
+-- The app also creates this table itself on first use.
+CREATE TABLE IF NOT EXISTS bank_balances (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     UUID          NOT NULL,
+    balance_ils NUMERIC(14,2) NOT NULL,
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
 -- Supabase row-level security
 ALTER TABLE transactions       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_snapshots    ENABLE ROW LEVEL SECURITY;
