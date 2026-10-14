@@ -16,6 +16,7 @@ gate.require_login()  # nothing below runs without the password
 import menu
 menu.top()
 import exchange_cash as XC
+import dedupe
 
 clean = lambda s: "".join(ch for ch in (s or "") if ch.isascii() and not ch.isspace())
 URL, UID = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
@@ -61,15 +62,20 @@ with tab_imp:
                     assets[sym] = c.execute("INSERT INTO assets(symbol,name,asset_class,api_id) "
                                             "VALUES (%s,%s,%s::asset_class,%s) RETURNING id",
                                             (sym, name, cls, api)).fetchone()[0]
-                existing = {(str(d), s, t, D(a), n) for d, s, t, a, n in c.execute(
+                existing = {}   # (date, symbol, type, amount) -> [notes]; FEE rows also keyed by notes
+                for d, s, t, a, n in c.execute(
                     """SELECT t."timestamp"::date, a.symbol, t.type::text, t.amount, coalesce(t.notes,'')
-                       FROM transactions t JOIN assets a ON a.id = t.asset_id WHERE t.user_id = %s""", (UID,))}
+                       FROM transactions t JOIN assets a ON a.id = t.asset_id WHERE t.user_id = %s""", (UID,)):
+                    existing.setdefault((str(d), s, t, D(a)) + ((n,) if t == "FEE" else ()), []).append(n)
                 added = skipped = 0
                 for r in rows:
-                    sym = r["symbol"].upper()
-                    if (r["date"], sym, r["type"], D(r["amount"]), r["notes"]) in existing:
+                    sym, notes = r["symbol"].upper(), r["notes"] or ""
+                    key = (r["date"], sym, r["type"], D(r["amount"])) + ((notes,) if r["type"] == "FEE" else ())
+                    # same transaction already stored, even if its notes are worded differently
+                    if dedupe.is_duplicate_of_existing(key, notes, existing):
                         skipped += 1
                         continue
+                    existing.setdefault(key, []).append(notes)
                     c.execute("""INSERT INTO transactions(user_id,asset_id,type,amount,price_per_unit,fee,currency,"timestamp",notes)
                                  VALUES (%s,%s,%s::tx_type,%s,%s,%s,%s,%s,%s)""",
                               (UID, assets[sym], r["type"], D(r["amount"]), D(r["price_per_unit"]), D(r["fee"] or 0),
@@ -85,6 +91,27 @@ with tab_imp:
 with tab_del:
     with psycopg.connect(URL) as c:
         n = c.execute("SELECT count(*) FROM transactions WHERE user_id = %s", (UID,)).fetchone()[0]
+        dups = dedupe.find_duplicates(c.execute(
+            """SELECT t.id, t."timestamp"::date, a.symbol, t.type::text, t.amount, coalesce(t.notes,'')
+               FROM transactions t JOIN assets a ON a.id = t.asset_id WHERE t.user_id = %s
+               ORDER BY t."timestamp", t.id""", (UID,)).fetchall())
+    st.subheader(":material/content_copy: כפילויות")
+    if not dups:
+        st.success("אין עסקאות כפולות", icon=":material/check_circle:")
+    else:
+        st.write(f"נמצאו **{len(dups)}** עסקאות שנרשמו פעמיים. השורה המפורטת יותר נשארת, הכפולה תימחק:")
+        st.dataframe([{"תאריך": str(d[1]), "נכס": d[2], "סוג": d[3], "כמות": float(d[4]),
+                       "נמחקת": d[5], "נשארת": k[5]} for d, k in dups],
+                     use_container_width=True, hide_index=True)
+        if st.button(f"מחק {len(dups)} כפילויות", type="primary", icon=":material/cleaning_services:"):
+            with psycopg.connect(URL) as c:
+                c.execute("DELETE FROM transactions WHERE user_id = %s AND id = ANY(%s)",
+                          (UID, [d[0] for d, _ in dups]))
+            st.cache_data.clear()
+            st.success(f"נמחקו {len(dups)} כפילויות", icon=":material/check_circle:")
+            st.rerun()
+    st.divider()
+    st.subheader(":material/delete_forever: מחיקת הכול")
     st.write(f"יש כרגע **{n}** עסקאות באפליקציה.")
     st.warning("המחיקה סופית ומוחקת את כל העסקאות. הנכסים (BTC וכו') נשארים.")
     ok = st.text_input("כדי לאשר, כתוב: מחק")
