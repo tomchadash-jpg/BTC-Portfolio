@@ -41,7 +41,9 @@ def section_page(i: int):
 pages = [st.Page(section_page(i), title=t, icon=ic, url_path=u, default=(i == 0))
          for i, (t, ic, u) in enumerate(SECTIONS)]
 pages += [st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon=":material/upload_file:"),
-          st.Page("pages/fees.py", title="עמלות", icon=":material/receipt_long:")]
+          st.Page("pages/fees.py", title="עמלות", icon=":material/receipt_long:"),
+          st.Page("pages/export.py", title="ייצוא נתונים", icon=":material/download:")]
 menu.NAV = pages                                       # the ☰ menu links to these
+menu.TOOLS_FROM = len(SECTIONS)                        # pages after the sections go under "כלים"
 pg = st.navigation(pages, position="hidden")
 pg.run()
