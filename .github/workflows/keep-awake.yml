@@ -1,0 +1,18 @@
+name: Keep app awake
+on:
+  schedule:
+    - cron: "40 3,9,15,21 * * *"   # every 6 hours; the 03:40 UTC run is ~06:40 Israel time
+  workflow_dispatch: {}            # run by hand from the Actions tab
+permissions:
+  actions: write                   # lets the keepalive step stop GitHub disabling schedules after 60 quiet days
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python scripts/keep_awake.py
+      - uses: liskin/gh-workflow-keepalive@v1
