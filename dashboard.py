@@ -1240,9 +1240,9 @@ if section == SECTIONS[7]:
         items = []
         if "sopr" in os_:
             s = os_["sopr"]
-            items.append(("percent", f"{s['avg7']:.3f}", "STH-SOPR (ממוצע 7 ימים)",
-                          ("מתחת ל-1: מחזיקים חדשים מוכרים בהפסד – סימן כניעה." if s["on"]
-                           else "מעל 1: מחזיקים חדשים מוכרים ברווח.") + f" נכון ל-{s['date']:%d/%m}.",
+            items.append(("percent", f"{s['avg7']:.3f}", "SOPR של קונים חדשים",
+                          ("מתחת ל-1: הקונים החדשים מוכרים בהפסד – סימן כניעה." if s["on"]
+                           else f'מעל 1: הקונים החדשים מוכרים בממוצע ב-{(s["avg7"] - 1) * 100:.1f}% רווח.') + f" נכון ל-{s['date']:%d/%m}.",
                           "good" if s["on"] else None))
         if "rp" in os_:
             r = os_["rp"]
@@ -1257,6 +1257,9 @@ if section == SECTIONS[7]:
                           + ("קפיצה חדה – סימן כניעה." if l_["on"] else f"קפיצת כניעה מעל {big(l_['spike'])}.")
                           + f" נכון ל-{l_['date']:%d/%m}.", "good" if l_["on"] else None))
         cards(items)
+        st.markdown("**מה העמוד הזה בודק:** במקום להסתכל רק על המחיר, הוא בודק אם **הקונים החדשים** (מי שקנה בחצי השנה האחרונה, "
+                    "STH) נמצאים בהפסד ומוכרים מתוך פחד. היסטורית, הרגעים האלה היו הזמנים הטובים לקנות. "
+                    "שלושת הגרפים למטה בודקים את זה משלוש זוויות.")
         st.caption("מחזיקים חדשים (STH) = מטבעות שזזו ב-155 הימים האחרונים. מקור: bitcoin-data.com (BGeometrics), "
                    "4 שנים אחרונות. בתוכנית החינמית SOPR ומחיר העלות מתעכבים בכשבוע; ההפסד הממומש עדכני.")
         if oc["errors"]:
@@ -1268,6 +1271,10 @@ if section == SECTIONS[7]:
         # 1) price against the STH cost basis, with your buys
         rp_s = oc.get("rp")
         if rp_s is not None and len(rp_s):
+            st.markdown("##### 1. כמה שילמו הקונים החדשים")
+            st.markdown("הקו הכחול הוא **המחיר הממוצע ששילמו כל מי שקנו ביטקוין בחצי השנה האחרונה**. "
+                        "כשהמחיר (כתום) מעל הקו, הקונים החדשים ברווח ורגועים. כשהוא יורד מתחת לקו, רובם בהפסד, "
+                        "חלקם נבהלים ומוכרים – ובדיוק שם נוצרו בעבר התחתיות.")
             start = rp_s.index[0]
             pxs = btc_px[btc_px.index >= start] if not btc_px.empty else btc_px
             f1 = go.Figure()
@@ -1285,11 +1292,18 @@ if section == SECTIONS[7]:
                              legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                              yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
             st.plotly_chart(f1, use_container_width=True, config=CHART_CFG)
-            st.caption("כשהקו הכתום יורד מתחת לקו הכחול, מי שקנה בחצי השנה האחרונה בהפסד – שם נוצרו תחתיות.")
+            st.caption("איך לקרוא: כתום מתחת לכחול = אזור קנייה טוב היסטורית. הנקודות הלבנות = הקניות שלך.")
 
         # 2) STH-SOPR, 7-day average, with the area below 1 shaded
         so = oc.get("sopr")
         if so is not None and len(so):
+            st.markdown("##### 2. האם הקונים החדשים מוכרים ברווח או בהפסד (SOPR)")
+            st.markdown("**SOPR** = המחיר שבו מטבע נמכר היום, חלקי המחיר שבו הוא נקנה. "
+                        "כאן מסתכלים רק על הקונים החדשים (חצי השנה האחרונה), ובממוצע של שבוע.\n"
+                        "- **1.05** = מי שמכר היום קיבל בממוצע 5% יותר ממה ששילם, כלומר מכר ברווח.\n"
+                        "- **1.00** = מכר בדיוק במחיר שקנה.\n"
+                        "- **0.95** = מכר ב-5% פחות ממה ששילם, כלומר **מכר בהפסד**.\n\n"
+                        "כשהקו יורד מתחת ל-1, אנשים מוכרים בהפסד מתוך פחד – זו \"כניעה\", והיא בדרך כלל קורית קרוב לתחתית.")
             so7 = so.rolling(7).mean().dropna()
             f2 = go.Figure()
             f2.add_hrect(y0=min(0.9, float(so7.min())), y1=1, fillcolor="#2e9e5b", opacity=0.15, line_width=0)
@@ -1305,11 +1319,16 @@ if section == SECTIONS[7]:
             f2.update_layout(title="STH-SOPR", height=340, hovermode="x unified", showlegend=False,
                              margin=dict(l=10, r=10), yaxis=dict(title=None), xaxis=dict(title=None))
             st.plotly_chart(f2, use_container_width=True, config=CHART_CFG)
-            st.caption("הפס הירוק = מתחת ל-1, מחזיקים חדשים מוכרים בהפסד. נקודה לבנה בתוכו = קנית בזמן כניעה.")
+            st.caption("איך לקרוא: הקו בתוך הפס הירוק (מתחת ל-1) = מוכרים בהפסד, אזור קנייה. "
+                       "נקודה לבנה בתוך הפס = קנית בזמן כניעה.")
 
         # 3) STH realized loss per day, with the capitulation level
         ls = oc.get("loss")
         if ls is not None and len(ls) > 30:
+            st.markdown("##### 3. כמה כסף הפסידו הקונים החדשים במכירות")
+            st.markdown("כל עמודה היא **סך ההפסד בדולרים** שהקונים החדשים \"נעלו\" באותו יום, כשמכרו במחיר נמוך ממה ששילמו. "
+                        "ימים רגילים נראים כמו רעש נמוך. **עמודות גבוהות במיוחד** הן ימים של פאניקה, שבהם הרבה אנשים "
+                        "מוכרים בהפסד בבת אחת – והמוכרים הלחוצים יוצאים מהשוק.")
             wk = ls.rolling(7).sum()
             f3 = go.Figure()
             f3.add_trace(go.Bar(x=ls.index, y=ls / 1e6, name="הפסד יומי", marker_color="#e3613f",
