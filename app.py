@@ -11,7 +11,7 @@ import streamlit as st
 
 # Streamlit Cloud re-runs the pages after an update but can keep old copies of our own
 # modules in memory (styles, menu, ...). Reload them on every run so changes always show.
-for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw", "valuation", "exchange_cash"):
+for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw", "valuation", "onchain", "exchange_cash"):
     if _name in sys.modules:
         importlib.reload(sys.modules[_name])
 
@@ -28,7 +28,8 @@ SECTIONS = [("שווי היסטורי", ":material/show_chart:", "history"),
             ("נכסים", ":material/account_balance_wallet:", "assets"),
             ("תובנות", ":material/lightbulb:", "insights"),
             ("Power Law", ":material/stacked_line_chart:", "powerlaw"),
-            ("מדדי ערך", ":material/speed:", "valuation")]
+            ("מדדי ערך", ":material/speed:", "valuation"),
+            ("On-chain", ":material/hub:", "onchain")]
 MARKET_FROM = 5                                        # from here on: the Bitcoin market sections
 
 

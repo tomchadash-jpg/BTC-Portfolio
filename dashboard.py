@@ -24,10 +24,11 @@ import insights as I
 import menu
 import powerlaw as PL
 import valuation as VAL
+import onchain as OC
 
 # Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
 # modules in memory; reload them so new functions are always there.
-for _m in (A, E, I, PL, XC, VAL):
+for _m in (A, E, I, PL, XC, VAL, OC):
     importlib.reload(_m)
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "icon-192.png"))
@@ -229,7 +230,7 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law", "מדדי ערך"]
+SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law", "מדדי ערך", "On-chain"]
 section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
 with menu_pop:
     menu.group("הגדרות")
@@ -1203,6 +1204,124 @@ if section == SECTIONS[6]:
                          legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                          yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
         st.plotly_chart(fm, use_container_width=True, config=CHART_CFG)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner="מושך מדדי on-chain...")
+def onchain_data(token: str):
+    """STH-SOPR, STH realized price and STH realized loss (onchain.py also keeps a file copy,
+    so the 'refresh prices' button doesn't burn the free plan's ~15 requests a day)."""
+    return OC.fetch(token or None)
+
+
+if section == SECTIONS[7]:
+    oc = onchain_data(clean(os.getenv("BGEOMETRICS_TOKEN")))
+    btc_px = history("BTC-USD", "2018-01-01")
+    live_btc = live.get(CG["BTC"]) if CG["BTC"] in live else None
+    price_now = float(live_btc if live_btc else (btc_px.dropna().iloc[-1] if not btc_px.empty else 0))
+    if all(oc.get(k) is None for k in OC.SERIES):
+        st.warning("לא הצלחתי למשוך נתוני on-chain מ-bitcoin-data.com. ייתכן שנגמרה מכסת הבקשות היומית "
+                   "של התוכנית החינמית; נסה שוב מאוחר יותר.")
+    else:
+        os_ = OC.status(oc, price_now)
+        n_on, n_av = os_["signals"], os_["available"]
+        if n_av and n_on == n_av:
+            st.success(icon=":material/south:", body=f"**כל {n_av} מדדי ה-on-chain באזור כניעה** – מחזיקים חדשים "
+                       "מוכרים בהפסד. היסטורית אלה אזורי הקנייה הטובים ביותר.")
+        elif n_on:
+            st.info(icon=":material/south_east:", body=f"**{n_on} מתוך {n_av} מדדים באזור כניעה.** יש לחץ מכירה של "
+                    "מחזיקים חדשים, אבל עוד לא כניעה מלאה.")
+        else:
+            st.info(f"אף מדד לא באזור כניעה (0 מתוך {n_av}). מחזיקים חדשים לא מוכרים בהפסד.")
+
+        d2 = lambda v: f"${v:,.0f}".replace("$", "&#36;")
+        big = lambda v: (f"${v / 1e9:,.2f}B" if v >= 1e9 else f"${v / 1e6:,.0f}M").replace("$", "&#36;")
+        items = []
+        if "sopr" in os_:
+            s = os_["sopr"]
+            items.append(("percent", f"{s['avg7']:.3f}", "STH-SOPR (ממוצע 7 ימים)",
+                          ("מתחת ל-1: מחזיקים חדשים מוכרים בהפסד – סימן כניעה." if s["on"]
+                           else "מעל 1: מחזיקים חדשים מוכרים ברווח.") + f" נכון ל-{s['date']:%d/%m}.",
+                          "good" if s["on"] else None))
+        if "rp" in os_:
+            r = os_["rp"]
+            items.append(("straighten", d2(r["value"]), "מחיר העלות של מחזיקים חדשים",
+                          f"המחיר עכשיו {r['ratio']:.2f}× ממנו – "
+                          + ("מתחת לקו, אזור קנייה היסטורי." if r["on"] else f"{(r['ratio'] - 1) * 100:.0f}% מעליו.")
+                          + f" נכון ל-{r['date']:%d/%m}.", "good" if r["on"] else None))
+        if "loss" in os_:
+            l_ = os_["loss"]
+            items.append(("trending_down", big(l_["week"]), "הפסד ממומש של מחזיקים חדשים (7 ימים)",
+                          f"אחוזון {l_['percentile']:.0f} מ-4 השנים האחרונות. "
+                          + ("קפיצה חדה – סימן כניעה." if l_["on"] else f"קפיצת כניעה מעל {big(l_['spike'])}.")
+                          + f" נכון ל-{l_['date']:%d/%m}.", "good" if l_["on"] else None))
+        cards(items)
+        st.caption("מחזיקים חדשים (STH) = מטבעות שזזו ב-155 הימים האחרונים. מקור: bitcoin-data.com (BGeometrics), "
+                   "4 שנים אחרונות. בתוכנית החינמית SOPR ומחיר העלות מתעכבים בכשבוע; ההפסד הממומש עדכני.")
+        if oc["errors"]:
+            st.caption("לא נמשכו: " + ", ".join(oc["errors"]))
+
+        my_btc = [t for t in txs if assets[t.asset_id][0] == "BTC" and t.type == "BUY"]
+        buy_x = [pd.Timestamp(t.timestamp).tz_localize(None) for t in my_btc]
+
+        # 1) price against the STH cost basis, with your buys
+        rp_s = oc.get("rp")
+        if rp_s is not None and len(rp_s):
+            start = rp_s.index[0]
+            pxs = btc_px[btc_px.index >= start] if not btc_px.empty else btc_px
+            f1 = go.Figure()
+            f1.add_trace(go.Scatter(x=pxs.index, y=pxs, mode="lines", name="BTC", line=dict(color="#F7931A", width=1.6),
+                                    hovertemplate="$%{y:,.0f}<extra>BTC</extra>"))
+            f1.add_trace(go.Scatter(x=rp_s.index, y=rp_s, mode="lines", name="מחיר עלות STH",
+                                    line=dict(color="#4c9be8", width=1.6, dash="dash"),
+                                    hovertemplate="$%{y:,.0f}<extra>STH</extra>"))
+            pts = [(x, float(t.price_per_unit)) for x, t in zip(buy_x, my_btc) if x >= start]
+            if pts:
+                f1.add_trace(go.Scatter(x=[p[0] for p in pts], y=[p[1] for p in pts], mode="markers", name="הקניות שלך",
+                                        marker=dict(color="#ffffff", size=6, line=dict(color="#F7931A", width=1)),
+                                        hovertemplate="$%{y:,.0f}<extra>קנייה</extra>"))
+            f1.update_layout(title="BTC מול מחיר העלות של מחזיקים חדשים", height=400, hovermode="x unified",
+                             legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
+                             yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
+            st.plotly_chart(f1, use_container_width=True, config=CHART_CFG)
+            st.caption("כשהקו הכתום יורד מתחת לקו הכחול, מי שקנה בחצי השנה האחרונה בהפסד – שם נוצרו תחתיות.")
+
+        # 2) STH-SOPR, 7-day average, with the area below 1 shaded
+        so = oc.get("sopr")
+        if so is not None and len(so):
+            so7 = so.rolling(7).mean().dropna()
+            f2 = go.Figure()
+            f2.add_hrect(y0=min(0.9, float(so7.min())), y1=1, fillcolor="#2e9e5b", opacity=0.15, line_width=0)
+            f2.add_hline(y=1, line=dict(color="#9aa0a6", width=1, dash="dash"))
+            f2.add_trace(go.Scatter(x=so7.index, y=so7, mode="lines", name="STH-SOPR (7 ימים)",
+                                    line=dict(color="#b07de8", width=1.5), hovertemplate="%{y:.3f}<extra>SOPR</extra>"))
+            if buy_x:
+                ys = so7.reindex([x.normalize() for x in buy_x])
+                ok = ys.notna().values
+                f2.add_trace(go.Scatter(x=[x for x, k in zip(buy_x, ok) if k], y=ys[ok].values, mode="markers",
+                                        name="הקניות שלך", marker=dict(color="#ffffff", size=6, line=dict(color="#F7931A", width=1)),
+                                        hovertemplate="%{y:.3f}<extra>קנייה</extra>"))
+            f2.update_layout(title="STH-SOPR", height=340, hovermode="x unified", showlegend=False,
+                             margin=dict(l=10, r=10), yaxis=dict(title=None), xaxis=dict(title=None))
+            st.plotly_chart(f2, use_container_width=True, config=CHART_CFG)
+            st.caption("הפס הירוק = מתחת ל-1, מחזיקים חדשים מוכרים בהפסד. נקודה לבנה בתוכו = קנית בזמן כניעה.")
+
+        # 3) STH realized loss per day, with the capitulation level
+        ls = oc.get("loss")
+        if ls is not None and len(ls) > 30:
+            wk = ls.rolling(7).sum()
+            f3 = go.Figure()
+            f3.add_trace(go.Bar(x=ls.index, y=ls / 1e6, name="הפסד יומי", marker_color="#e3613f",
+                                hovertemplate="$%{y:,.0f}M<extra>יומי</extra>"))
+            f3.add_trace(go.Scatter(x=wk.index, y=wk / 7 / 1e6, mode="lines", name="ממוצע 7 ימים",
+                                    line=dict(color="#e8e8e8", width=1.2), hovertemplate="$%{y:,.0f}M<extra>ממוצע</extra>"))
+            f3.add_hline(y=os_["loss"]["spike"] / 7 / 1e6, line=dict(color="#3fbf73", width=1, dash="dash"),
+                         annotation_text="רף כניעה", annotation_position="top left")
+            f3.update_layout(title="הפסד ממומש של מחזיקים חדשים ($M ליום)", height=360, hovermode="x unified",
+                             legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10),
+                             yaxis=dict(title=None, tickprefix="$", ticksuffix="M"), xaxis=dict(title=None))
+            st.plotly_chart(f3, use_container_width=True, config=CHART_CFG)
+            st.caption(f"הקו הירוק = הרף שמעליו הממוצע השבועי נמצא ב-{100 - OC.LOSS_SPIKE:.0f}% העליונים של 4 השנים. "
+                       "קפיצה מעליו = כניעה של מחזיקים חדשים.")
 
 TYPE_HE = {"BUY": "קנייה", "SELL": "מכירה", "FEE": "עמלה", "TRANSFER": "העברה", "DIVIDEND": "דיבידנד",
            "STAKING_REWARD": "תגמול"}
