@@ -230,8 +230,9 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law", "מדדי ערך", "On-chain"]
-section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
+SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "מדדי ערך"]
+section = SECTIONS[min(st.session_state.get("section_idx", 0), len(SECTIONS) - 1)]   # which page of the ☰ menu this is (app.py)
+VAL_SUBS = ["סיכום", "Power Law", "On-chain"]                   # subsections of "מדדי ערך"
 with menu_pop:
     menu.group("הגדרות")
     classes = sorted({a[2] for a in assets.values()})
@@ -1054,7 +1055,12 @@ if section == SECTIONS[4]:
                         f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
                         f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
 
-if section == SECTIONS[5]:
+sub = None
+if section == "מדדי ערך":                    # one page, three subsections; only the chosen one is loaded
+    sub = st.segmented_control("תת-סקשן", VAL_SUBS, default=VAL_SUBS[0], key="val_sub",
+                               label_visibility="collapsed") or VAL_SUBS[0]
+
+if sub == "Power Law":
     btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
     if btc_all.empty:
         st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
@@ -1140,7 +1146,7 @@ def realized_price(key: str):
         return None, str(e)
 
 
-if section == SECTIONS[6]:
+if sub == "סיכום":
     btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
     if btc_all.empty:
         st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
@@ -1215,7 +1221,7 @@ def onchain_data(token: str):
     return OC.fetch(token or None)
 
 
-if section == SECTIONS[7]:
+if sub == "On-chain":
     oc = onchain_data(clean(os.getenv("BGEOMETRICS_TOKEN")))
     btc_px = history("BTC-USD", "2018-01-01")
     live_btc = live.get(CG["BTC"]) if CG["BTC"] in live else None

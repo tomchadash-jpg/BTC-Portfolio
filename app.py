@@ -27,9 +27,7 @@ SECTIONS = [("שווי היסטורי", ":material/show_chart:", "history"),
             ("יעדים", ":material/flag:", "goals"),
             ("נכסים", ":material/account_balance_wallet:", "assets"),
             ("תובנות", ":material/lightbulb:", "insights"),
-            ("Power Law", ":material/stacked_line_chart:", "powerlaw"),
-            ("מדדי ערך", ":material/speed:", "valuation"),
-            ("On-chain", ":material/hub:", "onchain")]
+            ("מדדי ערך", ":material/speed:", "valuation")]   # Power Law and On-chain are its subsections
 MARKET_FROM = 5                                        # from here on: the Bitcoin market sections
 
 

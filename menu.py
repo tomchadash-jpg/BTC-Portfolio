@@ -7,8 +7,8 @@ writing into the returned popover.
 import streamlit as st
 
 NAV = []          # StreamlitPage objects, set by app.py on every run
-MARKET_FROM = 5   # index of the first Bitcoin-market section (Power Law, ...), set by app.py
-TOOLS_FROM = 7    # index of the first tool page in NAV (after the dashboard sections), set by app.py
+MARKET_FROM = 5   # index of the first Bitcoin-market section (מדדי ערך), set by app.py
+TOOLS_FROM = 6    # index of the first tool page in NAV (after the dashboard sections), set by app.py
 
 
 def top(overlap: bool = False):
