@@ -378,100 +378,102 @@ def grid(cards, key, per_row=3):
 [class*="st-key-kpi"] [data-testid="stMetricDelta"] { font-size: .7rem; }
 </style>""")
 
-cards = [("שווי נקי", money(nw_now), None),
-         ("סה״כ הושקע", money(invested_now), None),
-         ("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%"),
-         ("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now), None),
-         ("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה"),
-         ("ירידה מקסימלית מהשיא", f"{E.max_drawdown(twr) * 100:.1f}%", None)]
-if A.COLD in chosen:                           # bitcoin network fees exist only in the cold wallet
-    cards += [("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now), None),
-              ("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now), None)]
-btc_held = [a for a in ids if assets[a][0] == "BTC"]
-if btc_held:                                   # bitcoin in the cold wallet: amount first, it's what matters most
-    q = sum(float(summ.by_asset[a]["qty"]) for a in btc_held)
-    px_btc = float(summ.by_asset[btc_held[0]]["price"]) * fx_now
-    on_ex = A.btc_on_exchanges(tx_f, set(btc_held))
-    ex_q = sum(on_ex.values())
-    # short enough to fit a card on a phone: 4 decimals (6 for small amounts), value underneath
-    btc_fmt = lambda x: f"₿{x:.4f}" if x >= 0.01 else f"₿{x:.6f}"
-    sats = lambda x: f"{x * 1e8 / 1e6:,.1f}M sats" if x * 1e8 >= 1e6 else f"{x * 1e8:,.0f} sats"
-    if ex_q > 0:
-        cards[0:0] = [("בארנק הקר", btc_fmt(q - ex_q), money((q - ex_q) * px_btc)),
-                      ("בבורסה", btc_fmt(ex_q), f"{sats(ex_q)} · {money(ex_q * px_btc)}")]
-    else:
-        cards.insert(0, ("בארנק הקר", btc_fmt(q), money(q * px_btc)))
-grid(cards, "kpi_main")
+# the portfolio summary (cards, cash, per-account, average cost) only on the home page
+if section == SECTIONS[0]:
+    cards = [("שווי נקי", money(nw_now), None),
+             ("סה״כ הושקע", money(invested_now), None),
+             ("רווח/הפסד (בניכוי עמלות)", money(pl), f"{pl / invested_now * 100 if invested_now else 0.0:+.1f}%"),
+             ("רווח ממומש (ממכירות)", money(float(realized_sales) * fx_now), None),
+             ("TWR – תשואה כוללת", f"{(twr.iloc[-1] - 1) * 100:+.1f}%", f"{E.cagr(twr) * 100:+.1f}% לשנה"),
+             ("ירידה מקסימלית מהשיא", f"{E.max_drawdown(twr) * 100:.1f}%", None)]
+    if A.COLD in chosen:                           # bitcoin network fees exist only in the cold wallet
+        cards += [("עמלות רשת (on-chain)", money(float(onchain_loss) * fx_now), None),
+                  ("עמלות משיכה מהבורסות", money(float(withdrawal_loss) * fx_now), None)]
+    btc_held = [a for a in ids if assets[a][0] == "BTC"]
+    if btc_held:                                   # bitcoin in the cold wallet: amount first, it's what matters most
+        q = sum(float(summ.by_asset[a]["qty"]) for a in btc_held)
+        px_btc = float(summ.by_asset[btc_held[0]]["price"]) * fx_now
+        on_ex = A.btc_on_exchanges(tx_f, set(btc_held))
+        ex_q = sum(on_ex.values())
+        # short enough to fit a card on a phone: 4 decimals (6 for small amounts), value underneath
+        btc_fmt = lambda x: f"₿{x:.4f}" if x >= 0.01 else f"₿{x:.6f}"
+        sats = lambda x: f"{x * 1e8 / 1e6:,.1f}M sats" if x * 1e8 >= 1e6 else f"{x * 1e8:,.0f} sats"
+        if ex_q > 0:
+            cards[0:0] = [("בארנק הקר", btc_fmt(q - ex_q), money((q - ex_q) * px_btc)),
+                          ("בבורסה", btc_fmt(ex_q), f"{sats(ex_q)} · {money(ex_q * px_btc)}")]
+        else:
+            cards.insert(0, ("בארנק הקר", btc_fmt(q), money(q * px_btc)))
+    grid(cards, "kpi_main")
 
-# --- cash outside the investments: checking account (Mizrahi, entered by hand) and shekels waiting
-#     on an exchange (Coinbox, from the e-mail scan). Shown next to the portfolio, not part of its returns ---
-if not is_demo:
-    bank_ils, bank_at = load_bank()
-    xcash = load_xcash()
+    # --- cash outside the investments: checking account (Mizrahi, entered by hand) and shekels waiting
+    #     on an exchange (Coinbox, from the e-mail scan). Shown next to the portfolio, not part of its returns ---
+    if not is_demo:
+        bank_ils, bank_at = load_bank()
+        xcash = load_xcash()
+        if ccy == "ILS":
+            ils_per_disp = fx_now
+        else:
+            _ils = history("ILS=X", start)
+            ils_per_disp = float(_ils.iloc[-1]) if not _ils.empty else 3.0
+        ccards = []
+        if bank_ils is not None:
+            when = bank_at.astimezone(ZoneInfo("Asia/Jerusalem"))
+            ccards.append(("עו״ש מזרחי", f"₪{bank_ils:,.0f}", f"עודכן {when:%d/%m}"))
+        for ex, (bal, last) in xcash.items():
+            ccards.append((f"מזומן ב{EX_HE.get(ex, ex)}", f"₪{bal:,.0f}", f"עודכן {last:%d/%m}"))
+        if ccards:
+            extra_ils = (bank_ils or 0.0) + sum(b for b, _ in xcash.values())
+            extra_disp = extra_ils / ils_per_disp if ccy == "USD" else extra_ils
+            ccards.append(("שווי כולל מזומן", money(nw_now + extra_disp), None))
+            grid(ccards, "kpi_bank", per_row=min(len(ccards), 3))
+        else:
+            st.caption("יתרות המזומן עוד לא הוזנו")
+        b1, b2 = st.columns(2)
+        with b1.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
+            with st.form("bank_form", border=False):
+                new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
+                if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                    save_bank(new_bal)
+                    st.rerun()
+        with b2.popover("תיקון קוינבוקס", icon=":material/payments:", use_container_width=True):
+            st.caption("היתרה מתעדכנת לבד מהמיילים (הפקדות וקניות). אם היא לא תואמת למה שמופיע בקוינבוקס, "
+                       "הזן כאן את היתרה הנכונה.")
+            with st.form("xcash_form", border=False):
+                cur = xcash.get("Coinbox", (0.0, None))[0]
+                new_x = st.number_input("יתרת שקלים בקוינבוקס (₪)", value=float(cur), step=10.0, format="%.2f")
+                if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                    XC.set_balance("Coinbox", new_x)
+                    load_xcash.clear()
+                    st.rerun()
+
+    if len(chosen) > 1:
+        st.subheader("לפי תיק")
+        acards = []
+        for a in chosen:
+            at = [t for t in acct_txs[a] if assets[t.asset_id][2] in sel]
+            a_new, a_cash = cash_model(at, idx)
+            v = (sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets)
+                 + float(a_cash.iloc[-1])) * fx_now
+            inv = float((a_new * fx).sum())
+            acards.append((a, money(v), f"{money(v - inv)} ({(v - inv) / inv * 100:+.1f}%)" if inv else None))
+        grid(acards, "kpi_accounts")
+
+    held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
+    if held:
+        st.subheader("מחיר רכישה ממוצע")
+        hcards = []
+        for a in held:
+            b = summ.by_asset[a]
+            avg = float(b["avg_cost"]) * afx[a]
+            now = float(b["price"]) * fx_now
+            fmt = (lambda x: f"{sym}{x:,.2f}") if avg < 100 else (lambda x: f"{sym}{x:,.0f}")
+            hcards.append((assets[a][0], fmt(avg), f"{(now / avg - 1) * 100:+.1f}% (היום {fmt(now)})"))
+        grid(hcards, "kpi_assets")
     if ccy == "ILS":
-        ils_per_disp = fx_now
-    else:
-        _ils = history("ILS=X", start)
-        ils_per_disp = float(_ils.iloc[-1]) if not _ils.empty else 3.0
-    ccards = []
-    if bank_ils is not None:
-        when = bank_at.astimezone(ZoneInfo("Asia/Jerusalem"))
-        ccards.append(("עו״ש מזרחי", f"₪{bank_ils:,.0f}", f"עודכן {when:%d/%m}"))
-    for ex, (bal, last) in xcash.items():
-        ccards.append((f"מזומן ב{EX_HE.get(ex, ex)}", f"₪{bal:,.0f}", f"עודכן {last:%d/%m}"))
-    if ccards:
-        extra_ils = (bank_ils or 0.0) + sum(b for b, _ in xcash.values())
-        extra_disp = extra_ils / ils_per_disp if ccy == "USD" else extra_ils
-        ccards.append(("שווי כולל מזומן", money(nw_now + extra_disp), None))
-        grid(ccards, "kpi_bank", per_row=min(len(ccards), 3))
-    else:
-        st.caption("יתרות המזומן עוד לא הוזנו")
-    b1, b2 = st.columns(2)
-    with b1.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
-        with st.form("bank_form", border=False):
-            new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
-            if st.form_submit_button("שמירה", type="primary", use_container_width=True):
-                save_bank(new_bal)
-                st.rerun()
-    with b2.popover("תיקון קוינבוקס", icon=":material/payments:", use_container_width=True):
-        st.caption("היתרה מתעדכנת לבד מהמיילים (הפקדות וקניות). אם היא לא תואמת למה שמופיע בקוינבוקס, "
-                   "הזן כאן את היתרה הנכונה.")
-        with st.form("xcash_form", border=False):
-            cur = xcash.get("Coinbox", (0.0, None))[0]
-            new_x = st.number_input("יתרת שקלים בקוינבוקס (₪)", value=float(cur), step=10.0, format="%.2f")
-            if st.form_submit_button("שמירה", type="primary", use_container_width=True):
-                XC.set_balance("Coinbox", new_x)
-                load_xcash.clear()
-                st.rerun()
-
-if len(chosen) > 1:
-    st.subheader("לפי תיק")
-    acards = []
-    for a in chosen:
-        at = [t for t in acct_txs[a] if assets[t.asset_id][2] in sel]
-        a_new, a_cash = cash_model(at, idx)
-        v = (sum(float(signed_qty(at, aid, idx).iloc[-1]) * float(prices[aid].iloc[-1]) for aid in assets)
-             + float(a_cash.iloc[-1])) * fx_now
-        inv = float((a_new * fx).sum())
-        acards.append((a, money(v), f"{money(v - inv)} ({(v - inv) / inv * 100:+.1f}%)" if inv else None))
-    grid(acards, "kpi_accounts")
-
-held = [a for a in ids if summ.by_asset[a]["qty"] > 0 and assets[a][2] != "cash"]
-if held:
-    st.subheader("מחיר רכישה ממוצע")
-    hcards = []
-    for a in held:
-        b = summ.by_asset[a]
-        avg = float(b["avg_cost"]) * afx[a]
-        now = float(b["price"]) * fx_now
-        fmt = (lambda x: f"{sym}{x:,.2f}") if avg < 100 else (lambda x: f"{sym}{x:,.0f}")
-        hcards.append((assets[a][0], fmt(avg), f"{(now / avg - 1) * 100:+.1f}% (היום {fmt(now)})"))
-    grid(hcards, "kpi_assets")
-if ccy == "ILS":
-    st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
-               "ולכן הרווח וההפסד כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
-with st.expander("מה המדדים אומרים?", icon=":material/info:"):
-    st.markdown("""
+        st.caption("בשקלים: עלות הקנייה מומרת לפי שער הדולר ביום כל קנייה והשווי לפי השער היום, "
+                   "ולכן הרווח וההפסד כוללים גם את השפעת שער החליפין. TWR והשוואה למדדים בדולרים.")
+    with st.expander("מה המדדים אומרים?", icon=":material/info:"):
+        st.markdown("""
 - **סה״כ הושקע**: כל הכסף ששילמת על קניות מאז ההתחלה, כולל עמלות בורסה.
 - **מחיר רכישה ממוצע**: כמה שילמת בממוצע על יחידה אחת (למשל BTC אחד), כולל עמלות בורסה ומשוקלל לפי הכמות שקנית בכל עסקה. בשקלים לפי ממוצע השערים בימי הקנייה.
 - **רווח/הפסד (בניכוי עמלות)**: מה שיש לך היום שווה פחות מה ששילמת בפועל. הוא כולל את עמלות הבורסה (שנכללות בסכום ששילמת) ואת ה-BTC שנוכה בעמלות רשת ובמשיכות. הוא "על הנייר" ומשתנה עם המחיר, ומתממש רק כשמוכרים. בתצוגת שקלים: שווי היום בשקלים פחות עלות הקנייה בשקלים, כולל השפעת השער.
@@ -481,7 +483,7 @@ with st.expander("מה המדדים אומרים?", icon=":material/info:"):
 - **TWR**: התשואה של ההשקעה עצמה, בלי קשר לכמה כסף הוספת ומתי. אם כל שקל שהושקע שווה היום 1% פחות, זה -1.0%. מתאים להשוואה מול SPY, QQQ ו-BTC.
 - **CAGR**: אותה תשואה מתורגמת לקצב שנתי ממוצע. אם עברו כשנה וחצי ו-TWR הוא -1.0%, ה-CAGR יהיה בערך -0.6% בשנה.
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
-""")
+    """)
 
 
 def cards(items):
