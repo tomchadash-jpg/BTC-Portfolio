@@ -23,10 +23,11 @@ import exchange_cash as XC
 import insights as I
 import menu
 import powerlaw as PL
+import valuation as VAL
 
 # Streamlit Cloud re-runs app.py after each update but can keep old copies of our own
 # modules in memory; reload them so new functions are always there.
-for _m in (A, E, I, PL, XC):
+for _m in (A, E, I, PL, XC, VAL):
     importlib.reload(_m)
 
 st.set_page_config(page_title="Portfolio Tracker", layout="wide", page_icon=os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "icon-192.png"))
@@ -228,7 +229,7 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law"]
+SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "Power Law", "מדדי ערך"]
 section = SECTIONS[st.session_state.get("section_idx", 0)]       # which page of the ☰ menu this is (app.py)
 with menu_pop:
     menu.group("הגדרות")
@@ -1126,6 +1127,68 @@ if section == SECTIONS[5]:
                                    "קו המגמה": mp["trend"].round(0)})
                      .style.format({"גבול אזור ההגדלה": "${:,.0f}", "קו המגמה": "${:,.0f}"}),
                      use_container_width=True, hide_index=True)
+
+if section == SECTIONS[6]:
+    btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
+    if btc_all.empty:
+        st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
+    else:
+        live_btc = live.get(CG["BTC"]) if CG["BTC"] in live else None
+        vs = VAL.status(btc_all, now_price=live_btc)
+        n_in, n_all = vs["in_bottom"], len(vs["models"])
+        if n_in == n_all:
+            st.success(icon=":material/south:", body=f"**כל {n_all} המדדים בחמישית התחתונה** – אזור הערך העמוק "
+                       "שבו Checkmate ממשיך לעשות DCA.")
+        elif n_in:
+            st.info(icon=":material/south_east:", body=f"**{n_in} מתוך {n_all} מדדים בחמישית התחתונה.** "
+                    "המדדים לטווח הארוך זולים, אבל לא כולם – זה כבר לא אזור התחתית המלא.")
+        else:
+            st.info(f"אף מדד לא בחמישית התחתונה (0 מתוך {n_all}).")
+
+        d2 = lambda v: f"${v:,.0f}".replace("$", "&#36;")
+        items = [("₿", d2(vs["price"]), "מחיר עכשיו", "המחיר שכל המדדים נמדדים מולו", None)]
+        for m in vs["models"]:
+            inb = m["percentile"] <= VAL.BOTTOM
+            items.append(("location_on", f"{m['percentile']:.0f}%", m["name"],
+                          f"{m['note']}. ערך היום {d2(m['value'])}, המחיר {m['ratio']:.2f}× ממנו. "
+                          + ("בתוך החמישית התחתונה." if inb else f"נכנס לחמישית התחתונה מתחת ל-{d2(m['edge'])}."),
+                          "good" if inb else None))
+        cards(items)
+        st.caption("האחוז = כמה מהימים בהיסטוריה המחיר היה באותו יחס למדד או נמוך ממנו. "
+                   "מתחת ל-20% = החמישית התחתונה. Realized price (מחיר העלות on-chain), המדד המרכזי של Checkmate, "
+                   "לא כלול כי הוא דורש נתוני on-chain.")
+
+        # percentile of every model over time, with the bottom fifth shaded
+        ph = VAL.percentile_history(btc_all, since="2018-01-01")
+        colors = {"pl": "#F7931A", "ma200w": "#4c9be8", "ma200d": "#b07de8"}
+        fv = go.Figure()
+        fv.add_hrect(y0=0, y1=VAL.BOTTOM, fillcolor="#2e9e5b", opacity=0.15, line_width=0)
+        for key, name, _ in VAL.MODELS:
+            fv.add_trace(go.Scatter(x=ph.index, y=ph[key], mode="lines", name=name,
+                                    line=dict(color=colors[key], width=1.6),
+                                    hovertemplate="%{y:.0f}%<extra>" + name + "</extra>"))
+        fv.update_layout(title="אחוזון לכל מדד לאורך זמן", height=380, hovermode="x unified",
+                         legend=dict(orientation="h", y=-0.18), margin=dict(l=10, r=10),
+                         yaxis=dict(range=[0, 100], ticksuffix="%", title=None), xaxis=dict(title=None))
+        st.plotly_chart(fv, use_container_width=True, config=CHART_CFG)
+        st.caption("הפס הירוק = החמישית התחתונה. כשכל הקווים בתוכו יחד, זה אזור התחתית לפי Checkmate.")
+
+        # price against the model lines (log scale)
+        lines = VAL.model_lines(btc_all)
+        lines = lines[lines.index >= "2018-01-01"].iloc[::3]
+        px_d = VAL.daily(btc_all)
+        px_d = px_d[px_d.index >= "2018-01-01"]
+        fm = go.Figure()
+        fm.add_trace(go.Scatter(x=px_d.index, y=px_d, mode="lines", name="BTC", line=dict(color="#e8e8e8", width=1.4),
+                                hovertemplate="$%{y:,.0f}<extra>BTC</extra>"))
+        for key, name, _ in VAL.MODELS:
+            fm.add_trace(go.Scatter(x=lines.index, y=lines[key], mode="lines", name=name,
+                                    line=dict(color=colors[key], width=1.4, dash="dash" if key == "pl" else None),
+                                    hovertemplate="$%{y:,.0f}<extra>" + name + "</extra>"))
+        fm.update_layout(title="BTC מול המדדים", height=420, hovermode="x unified",
+                         legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
+                         yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
+        st.plotly_chart(fm, use_container_width=True, config=CHART_CFG)
 
 TYPE_HE = {"BUY": "קנייה", "SELL": "מכירה", "FEE": "עמלה", "TRANSFER": "העברה", "DIVIDEND": "דיבידנד",
            "STAKING_REWARD": "תגמול"}
