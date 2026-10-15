@@ -1128,13 +1128,26 @@ if section == SECTIONS[5]:
                      .style.format({"גבול אזור ההגדלה": "${:,.0f}", "קו המגמה": "${:,.0f}"}),
                      use_container_width=True, hide_index=True)
 
+@st.cache_data(ttl=6 * 3600, show_spinner="מושך realized price...")
+def realized_price(key: str):
+    """Realized price from Bitbo (with BITBO_API_KEY) or the free bitcoin-data.com; (None, error) on failure."""
+    try:
+        return VAL.realized_price(key or None)
+    except Exception as e:
+        return None, str(e)
+
+
 if section == SECTIONS[6]:
     btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
     if btc_all.empty:
         st.warning("לא הצלחתי לטעון את היסטוריית מחיר הביטקוין")
     else:
         live_btc = live.get(CG["BTC"]) if CG["BTC"] in live else None
-        vs = VAL.status(btc_all, now_price=live_btc)
+        rp, rp_src = realized_price(clean(os.getenv("BITBO_API_KEY")))
+        if rp is None or not len(rp):
+            st.caption(f"לא הצלחתי למשוך realized price ({rp_src}); מוצגים שאר המדדים.")
+            rp = None
+        vs = VAL.status(btc_all, now_price=live_btc, realized=rp)
         n_in, n_all = vs["in_bottom"], len(vs["models"])
         if n_in == n_all:
             st.success(icon=":material/south:", body=f"**כל {n_all} המדדים בחמישית התחתונה** – אזור הערך העמוק "
@@ -1149,21 +1162,22 @@ if section == SECTIONS[6]:
         items = [("₿", d2(vs["price"]), "מחיר עכשיו", "המחיר שכל המדדים נמדדים מולו", None)]
         for m in vs["models"]:
             inb = m["percentile"] <= VAL.BOTTOM
+            src = (f" מקור: {rp_src}, היסטוריה מ-{m['since']:%m/%Y}." if m["key"] == "rp" else "")
             items.append(("location_on", f"{m['percentile']:.0f}%", m["name"],
-                          f"{m['note']}. ערך היום {d2(m['value'])}, המחיר {m['ratio']:.2f}× ממנו. "
+                          f"{m['note']}.{src} ערך היום {d2(m['value'])}, המחיר {m['ratio']:.2f}× ממנו. "
                           + ("בתוך החמישית התחתונה." if inb else f"נכנס לחמישית התחתונה מתחת ל-{d2(m['edge'])}."),
                           "good" if inb else None))
         cards(items)
         st.caption("האחוז = כמה מהימים בהיסטוריה המחיר היה באותו יחס למדד או נמוך ממנו. "
-                   "מתחת ל-20% = החמישית התחתונה. Realized price (מחיר העלות on-chain), המדד המרכזי של Checkmate, "
-                   "לא כלול כי הוא דורש נתוני on-chain.")
+                   "מתחת ל-20% = החמישית התחתונה. Realized price הוא המדד המרכזי של Checkmate; "
+                   "בלי מפתח Bitbo הוא מגיע מ-bitcoin-data.com בעיכוב של כשבוע ועם היסטוריה קצרה יותר.")
 
         # percentile of every model over time, with the bottom fifth shaded
-        ph = VAL.percentile_history(btc_all, since="2018-01-01")
-        colors = {"pl": "#F7931A", "ma200w": "#4c9be8", "ma200d": "#b07de8"}
+        ph = VAL.percentile_history(btc_all, since="2018-01-01", realized=rp)
+        colors = {"rp": "#3fbf73", "pl": "#F7931A", "ma200w": "#4c9be8", "ma200d": "#b07de8"}
         fv = go.Figure()
         fv.add_hrect(y0=0, y1=VAL.BOTTOM, fillcolor="#2e9e5b", opacity=0.15, line_width=0)
-        for key, name, _ in VAL.MODELS:
+        for key, name, _ in VAL.models(rp):
             fv.add_trace(go.Scatter(x=ph.index, y=ph[key], mode="lines", name=name,
                                     line=dict(color=colors[key], width=1.6),
                                     hovertemplate="%{y:.0f}%<extra>" + name + "</extra>"))
@@ -1174,14 +1188,14 @@ if section == SECTIONS[6]:
         st.caption("הפס הירוק = החמישית התחתונה. כשכל הקווים בתוכו יחד, זה אזור התחתית לפי Checkmate.")
 
         # price against the model lines (log scale)
-        lines = VAL.model_lines(btc_all)
+        lines = VAL.model_lines(btc_all, rp)
         lines = lines[lines.index >= "2018-01-01"].iloc[::3]
         px_d = VAL.daily(btc_all)
         px_d = px_d[px_d.index >= "2018-01-01"]
         fm = go.Figure()
         fm.add_trace(go.Scatter(x=px_d.index, y=px_d, mode="lines", name="BTC", line=dict(color="#e8e8e8", width=1.4),
                                 hovertemplate="$%{y:,.0f}<extra>BTC</extra>"))
-        for key, name, _ in VAL.MODELS:
+        for key, name, _ in VAL.models(rp):
             fm.add_trace(go.Scatter(x=lines.index, y=lines[key], mode="lines", name=name,
                                     line=dict(color=colors[key], width=1.4, dash="dash" if key == "pl" else None),
                                     hovertemplate="$%{y:,.0f}<extra>" + name + "</extra>"))
