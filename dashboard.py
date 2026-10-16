@@ -230,9 +230,8 @@ idx = pd.date_range(start, datetime.now().date(), freq="D")
 
 CLS_HE = {"equity": "מניות וקרנות", "crypto": "קריפטו", "cash": "מזומן", "bond": "אג״ח", "digital_asset": "נכס דיגיטלי"}
 he = lambda c: CLS_HE.get(c, c)
-SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "מדדי ערך"]
+SECTIONS = ["שווי היסטורי", "השוואה למדדים", "יעדים", "נכסים", "תובנות", "מדדי ערך", "Power Law", "On-chain"]
 section = SECTIONS[min(st.session_state.get("section_idx", 0), len(SECTIONS) - 1)]   # which page of the ☰ menu this is (app.py)
-VAL_SUBS = ["סיכום", "Power Law", "On-chain"]                   # subsections of "מדדי ערך"
 with menu_pop:
     menu.group("הגדרות")
     classes = sorted({a[2] for a in assets.values()})
@@ -1055,10 +1054,8 @@ if section == SECTIONS[4]:
                         f"- **{cc['btc_linked_pct']:.0f}%** מהתיק תלוי ישירות במחיר הביטקוין "
                         f"(BTC, IBIT, MSTR, Metaplanet וחברות דומות), גם אם הוא מחולק בין נכסים שונים.")
 
-sub = None
-if section == "מדדי ערך":                    # one page, three subsections; only the chosen one is loaded
-    sub = st.segmented_control("תת-סקשן", VAL_SUBS, default=VAL_SUBS[0], key="val_sub",
-                               label_visibility="collapsed") or VAL_SUBS[0]
+# מדדי ערך and its two sub-options in the ☰ menu (Power Law, On-chain) - each its own page
+sub = {"מדדי ערך": "סיכום", "Power Law": "Power Law", "On-chain": "On-chain"}.get(section)
 
 if sub == "Power Law":
     btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010

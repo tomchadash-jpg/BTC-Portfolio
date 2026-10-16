@@ -40,6 +40,13 @@ _CSS = """
 [data-testid="stPopoverBody"] [data-testid="stPageLink-NavLink"] [data-testid="stIconMaterial"] {
     font-size: 1.6rem !important; opacity: .85; }
 [data-testid="stPopoverBody"] [data-testid="stElementContainer"] { margin-bottom: 0 !important; }
+/* sub-options (Power Law, On-chain under מדדי ערך): indented with a thin line on the right, a bit smaller */
+[data-testid="stPopoverBody"] [class*="st-key-menusub"] { margin-right: 1.3rem !important; padding-right: .5rem;
+    border-right: 2px solid rgba(250,250,250,.15); }
+[data-testid="stPopoverBody"] [class*="st-key-menusub"] [data-testid^="stPageLink"] p,
+[data-testid="stPopoverBody"] [class*="st-key-menusub"] [data-testid^="stPageLink"] span:not([data-testid="stIconMaterial"]) {
+    font-size: 1.05rem !important; }
+[data-testid="stPopoverBody"] [class*="st-key-menusub"] [data-testid="stIconMaterial"] { font-size: 1.3rem !important; }
 
 /* Insight cards */
 .ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: .6rem; margin: .4rem 0 1rem; }

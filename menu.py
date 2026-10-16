@@ -7,8 +7,9 @@ writing into the returned popover.
 import streamlit as st
 
 NAV = []          # StreamlitPage objects, set by app.py on every run
+SUB_OF = {}       # {index of a sub-option: index of its parent}, drawn indented under the parent
 MARKET_FROM = 5   # index of the first Bitcoin-market section (מדדי ערך), set by app.py
-TOOLS_FROM = 6    # index of the first tool page in NAV (after the dashboard sections), set by app.py
+TOOLS_FROM = 8    # index of the first tool page in NAV (after the dashboard sections), set by app.py
 
 
 def top(overlap: bool = False):
@@ -45,7 +46,11 @@ def top(overlap: bool = False):
                 st.markdown('<div class="menu-group">שוק הביטקוין</div>', unsafe_allow_html=True)
             if i == TOOLS_FROM:                         # the dashboard sections first, then the tools
                 st.markdown('<div class="menu-group">כלים</div>', unsafe_allow_html=True)
-            st.page_link(page)
+            if i in SUB_OF:                             # a sub-option: indented, under its parent
+                with st.container(key=f"menusub_{i}"):
+                    st.page_link(page)
+            else:
+                st.page_link(page)
     return pop
 
 

@@ -27,7 +27,9 @@ SECTIONS = [("שווי היסטורי", ":material/show_chart:", "history"),
             ("יעדים", ":material/flag:", "goals"),
             ("נכסים", ":material/account_balance_wallet:", "assets"),
             ("תובנות", ":material/lightbulb:", "insights"),
-            ("מדדי ערך", ":material/speed:", "valuation")]   # Power Law and On-chain are its subsections
+            ("מדדי ערך", ":material/speed:", "valuation"),
+            ("Power Law", ":material/stacked_line_chart:", "powerlaw"),   # sub-options of מדדי ערך in the ☰ menu
+            ("On-chain", ":material/hub:", "onchain")]
 MARKET_FROM = 5                                        # from here on: the Bitcoin market sections
 
 
@@ -46,6 +48,7 @@ pages += [st.Page("pages/import_csv.py", title="ייבוא ומחיקה", icon="
           st.Page("pages/export.py", title="ייצוא נתונים", icon=":material/download:")]
 menu.NAV = pages                                       # the ☰ menu links to these
 menu.MARKET_FROM = MARKET_FROM                         # sections from here go under "שוק הביטקוין"
+menu.SUB_OF = {6: 5, 7: 5}                             # Power Law, On-chain: indented under מדדי ערך
 menu.TOOLS_FROM = len(SECTIONS)                        # pages after the sections go under "כלים"
 pg = st.navigation(pages, position="hidden")
 pg.run()
