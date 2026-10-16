@@ -1057,6 +1057,31 @@ if section == SECTIONS[4]:
 # מדדי ערך and its two sub-options in the ☰ menu (Power Law, On-chain) - each its own page
 sub = {"מדדי ערך": "סיכום", "Power Law": "Power Law", "On-chain": "On-chain"}.get(section)
 
+my_avg = None                 # your average BTC purchase price (USD, incl. exchange fees), for the three market pages
+if sub:
+    _bp = E.build_positions([t for t in txs if assets[t.asset_id][0] == "BTC"]).values()
+    _q, _c = sum((p.qty for p in _bp), D(0)), sum((p.cost_basis for p in _bp), D(0))
+    my_avg = float(_c / _q) if _q > 0 else None
+
+
+def avg_card(price: float):
+    """Card: your average BTC buy price against today's price (empty list without BTC in the chosen accounts)."""
+    if not my_avg:
+        return []
+    diff = (price / my_avg - 1) * 100
+    return [("price_check", f"${my_avg:,.0f}".replace("$", "&#36;"), "מחיר הרכישה הממוצע שלך",
+             (f"המחיר עכשיו {abs(diff):.0f}% מתחתיו – קנייה עכשיו מורידה את הממוצע." if diff < 0
+              else f"המחיר עכשיו {diff:.0f}% מעליו.") + " כולל עמלות בורסה.",
+             "good" if diff < 0 else None)]
+
+
+def add_avg_line(fig, x0, x1):
+    """A dotted white line at your average BTC buy price."""
+    if my_avg:
+        fig.add_trace(go.Scatter(x=[x0, x1], y=[my_avg, my_avg], mode="lines", name="הממוצע שלך",
+                                 line=dict(color="#ffffff", width=1.3, dash="dot"),
+                                 hovertemplate="$%{y:,.0f}<extra>הממוצע שלך</extra>"))
+
 if sub == "Power Law":
     btc_all = PL.with_early_history(history("BTC-USD", "2010-07-17"))   # full history from 07/2010
     if btc_all.empty:
@@ -1089,7 +1114,7 @@ if sub == "Power Law":
                ("target", d2(zone_top), "גבול אזור ההגדלה היום",
                 ("מתחת למחיר הזה = שני העשירונים התחתונים." if k == 10 else "מתחת למחיר הזה = החמישון התחתון.")
                 + (" כרגע בתוך האזור." if buy_zone else f" כרגע {above:.0f}% מעליו."),
-                "good" if buy_zone else None)])
+                "good" if buy_zone else None)] + avg_card(stt["price"]))
 
         # chart: price (log scale) inside the bands, from the start of the data to 2 years ahead
         future = pd.date_range(btc_all.index[-1] + pd.Timedelta(days=1), periods=730, freq="D")
@@ -1115,6 +1140,7 @@ if sub == "Power Law":
                                     marker=dict(color="#ffffff", size=5, line=dict(color="#F7931A", width=1)),
                                     hovertemplate="$%{y:,.0f}<extra>קנייה</extra>"))
         start_view = btc_all.index[0]                                    # the whole map, from the first prices
+        add_avg_line(fp, start_view, future[-1])
         fp.update_layout(title=f"BTC מול Power Law – {mode}", height=460, hovermode="x unified",
                          legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                          yaxis=dict(type="log", tickprefix="$", title=None),
@@ -1173,7 +1199,7 @@ if sub == "סיכום":
                           f"{m['note']}.{src} ערך היום {d2(m['value'])}, המחיר {m['ratio']:.2f}× ממנו. "
                           + ("בתוך החמישית התחתונה." if inb else f"נכנס לחמישית התחתונה מתחת ל-{d2(m['edge'])}."),
                           "good" if inb else None))
-        cards(items)
+        cards(items + avg_card(vs["price"]))
         st.caption("האחוז = כמה מהימים בהיסטוריה המחיר היה באותו יחס למדד או נמוך ממנו. "
                    "מתחת ל-20% = החמישית התחתונה. Realized price הוא המדד המרכזי של Checkmate; "
                    "בלי מפתח Bitbo הוא מגיע מ-bitcoin-data.com בעיכוב של כשבוע ועם היסטוריה קצרה יותר.")
@@ -1205,6 +1231,7 @@ if sub == "סיכום":
             fm.add_trace(go.Scatter(x=lines.index, y=lines[key], mode="lines", name=name,
                                     line=dict(color=colors[key], width=1.4, dash="dash" if key == "pl" else None),
                                     hovertemplate="$%{y:,.0f}<extra>" + name + "</extra>"))
+        add_avg_line(fm, px_d.index[0], px_d.index[-1])
         fm.update_layout(title="BTC מול המדדים", height=420, hovermode="x unified",
                          legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                          yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
@@ -1259,7 +1286,7 @@ if sub == "On-chain":
                           f"אחוזון {l_['percentile']:.0f} מ-4 השנים האחרונות. "
                           + ("קפיצה חדה – סימן כניעה." if l_["on"] else f"קפיצת כניעה מעל {big(l_['spike'])}.")
                           + f" נכון ל-{l_['date']:%d/%m}.", "good" if l_["on"] else None))
-        cards(items)
+        cards(items + (avg_card(price_now) if price_now else []))
         st.markdown("**מה העמוד הזה בודק:** במקום להסתכל רק על המחיר, הוא בודק אם **הקונים החדשים** (מי שקנה בחצי השנה האחרונה, "
                     "STH) נמצאים בהפסד ומוכרים מתוך פחד. היסטורית, הרגעים האלה היו הזמנים הטובים לקנות. "
                     "שלושת הגרפים למטה בודקים את זה משלוש זוויות.")
@@ -1291,6 +1318,7 @@ if sub == "On-chain":
                 f1.add_trace(go.Scatter(x=[p[0] for p in pts], y=[p[1] for p in pts], mode="markers", name="הקניות שלך",
                                         marker=dict(color="#ffffff", size=6, line=dict(color="#F7931A", width=1)),
                                         hovertemplate="$%{y:,.0f}<extra>קנייה</extra>"))
+            add_avg_line(f1, start, pxs.index[-1] if len(pxs) else rp_s.index[-1])
             f1.update_layout(title="BTC מול מחיר העלות של מחזיקים חדשים", height=400, hovermode="x unified",
                              legend=dict(orientation="h", y=-0.15), margin=dict(l=10, r=10),
                              yaxis=dict(type="log", tickprefix="$", title=None), xaxis=dict(title=None))
