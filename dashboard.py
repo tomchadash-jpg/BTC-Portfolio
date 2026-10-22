@@ -458,33 +458,12 @@ if section == SECTIONS[0]:
             grid(ccards, "kpi_bank", per_row=min(len(ccards), 3))
         else:
             st.caption("יתרות המזומן עוד לא הוזנו")
-        # --- portfolio size as a multiple of a year's spending (25× ≈ the 4% rule) ---
-        monthly = load_expense()
-        if monthly:
-            annual_ils = monthly * 12
-            nw_ils = nw_now * (ils_per_disp if ccy == "USD" else 1.0)
-            mult = nw_ils / annual_ils
-            ecards = [("מכפיל הוצאה שנתית", f"{mult:.1f}×", f"{mult / 25 * 100:.0f}% מיעד 25×"),
-                      ("הוצאה שנתית", f"₪{annual_ils:,.0f}", f"₪{monthly:,.0f} בחודש")]
-            if ccards:
-                mult_all = (nw_ils + extra_ils) / annual_ils
-                ecards.append(("כולל מזומן", f"{mult_all:.1f}×", f"{mult_all * 12:.0f} חודשים"))
-            else:
-                ecards.append(("חודשי מחיה", f"{mult * 12:.0f}", None))
-            grid(ecards, "kpi_expense")
-        b1, b2, b3 = st.columns(3)
+        b1, b2 = st.columns(2)
         with b1.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
             with st.form("bank_form", border=False):
                 new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
                 if st.form_submit_button("שמירה", type="primary", use_container_width=True):
                     save_bank(new_bal)
-                    st.rerun()
-        with b3.popover("הוצאה חודשית", icon=":material/receipt_long:", use_container_width=True):
-            st.caption("ההוצאה החודשית הממוצעת שלך. משמשת לחישוב כמה שנות הוצאה התיק מכסה.")
-            with st.form("expense_form", border=False):
-                new_exp = st.number_input("הוצאה חודשית (₪)", value=float(monthly or 0.0), step=100.0, format="%.0f")
-                if st.form_submit_button("שמירה", type="primary", use_container_width=True):
-                    save_expense(new_exp)
                     st.rerun()
         with b2.popover("תיקון קוינבוקס", icon=":material/payments:", use_container_width=True):
             st.caption("היתרה מתעדכנת לבד מהמיילים (הפקדות וקניות). אם היא לא תואמת למה שמופיע בקוינבוקס, "
@@ -533,7 +512,6 @@ if section == SECTIONS[0]:
 - **עמלות משיכה מהבורסות**: BTC שהבורסה ניכתה ממך כשמשכת לארנק. זו עמלת שירות של הבורסה, לא עמלת רשת, והיא יכולה להיות פרופורציונלית לסכום.
 - **TWR**: התשואה של ההשקעה עצמה, בלי קשר לכמה כסף הוספת ומתי. אם כל שקל שהושקע שווה היום 1% פחות, זה -1.0%. מתאים להשוואה מול SPY, QQQ ו-BTC.
 - **CAGR**: אותה תשואה מתורגמת לקצב שנתי ממוצע. אם עברו כשנה וחצי ו-TWR הוא -1.0%, ה-CAGR יהיה בערך -0.6% בשנה.
-- **מכפיל הוצאה שנתית**: שווי התיק (לפי התיקים שבחרת) חלקי ההוצאה השנתית שלך, כלומר לכמה שנות מחיה הוא מספיק בלי הכנסה ובלי תשואה. 25× הוא היעד המקובל לעצמאות כלכלית (כלל ה-4%: אפשר למשוך 4% בשנה לאורך זמן). "כולל מזומן" מוסיף את העו״ש והשקלים בבורסה.
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
     """)
 
@@ -794,6 +772,52 @@ if section == SECTIONS[2]:
         fk.update_layout(title="קרן ההשתלמות מול ביטקוין", height=380, hovermode="x unified",
                          yaxis_title="100 = תחילת הטווח", legend=dict(orientation="h", y=-0.2), margin=dict(l=10, r=10))
         st.plotly_chart(fk, use_container_width=True, config=CHART_CFG)
+
+    # ---------- goal 3: portfolio as a multiple of a year's spending (8% rule → 12.5×) ----------
+    WD_RATE = 0.08
+    fi_mult = 1 / WD_RATE
+    st.subheader(f":material/beach_access: יעד: התיק שווה {fi_mult:g} שנות הוצאה")
+    monthly = None if is_demo else load_expense()
+    if not monthly:
+        st.info("הזן את ההוצאה החודשית שלך בכפתור למטה כדי לראות את המכפיל")
+    else:
+        annual_ils = monthly * 12
+        _ils = history("ILS=X", start)
+        ils_rate = fx_now if ccy == "ILS" else (float(_ils.iloc[-1]) if not _ils.empty else 3.0)
+        aix = pd.date_range(pd.Timestamp(min(t.timestamp for t in all_txs)).tz_localize(None).normalize(), today, freq="D")
+        port_usd = (sum(float(signed_qty(all_txs, aid, aix).iloc[-1]) * float(price_on(aid, aix).iloc[-1])
+                        for aid in all_assets) + float(cash_model(all_txs, aix)[1].iloc[-1]))
+        port_ils = port_usd * ils_rate
+        bank_ils, _ = load_bank()
+        cash_ils = (bank_ils or 0.0) + sum(b for b, _ in load_xcash().values())
+        mult = port_ils / annual_ils
+        mult_all = (port_ils + cash_ils) / annual_ils
+        target_ils = annual_ils * fi_mult
+        st.progress(min(mult / fi_mult, 1.0), text=f"{mult:.2f}× מתוך {fi_mult:g}× · {mult / fi_mult * 100:.0f}%")
+        to_disp = lambda ils: money(ils / ils_rate * fx_now).replace("$", "&#36;")
+        items = [("savings", f"{mult:.2f}×", "מכפיל ההוצאה השנתית",
+                  f"התיק מכסה כ-{mult * 12:.0f} חודשי מחיה", "good" if mult >= fi_mult else None)]
+        if mult < fi_mult:
+            items.append(("flag", to_disp(target_ils - port_ils), "חסר ליעד",
+                          f"היעד: {to_disp(target_ils)} ({fi_mult:g} × ההוצאה השנתית)", None))
+        else:
+            items.append(("flag", "✓", "היעד הושג", f"{WD_RATE * 100:g}% מהתיק = {to_disp(port_ils * WD_RATE)} בשנה", "good"))
+        items += [("payments", to_disp(port_ils * WD_RATE / 12), f"משיכה של {WD_RATE * 100:g}% בשנה",
+                   f"בחודש, מול הוצאה של {to_disp(monthly)}", "good" if port_ils * WD_RATE >= annual_ils else None)]
+        if cash_ils:
+            items.append(("account_balance", f"{mult_all:.2f}×", "כולל מזומן",
+                          f"עם העו״ש והשקלים בבורסה ({to_disp(cash_ils)})", None))
+        cards(items)
+        st.caption(f"כל התיקים יחד חלקי ההוצאה השנתית ({to_disp(annual_ils)}). לפי כלל ה-{WD_RATE * 100:g}%, "
+                   f"כשהתיק שווה {fi_mult:g} שנות הוצאה, משיכה של {WD_RATE * 100:g}% בשנה מכסה את ההוצאות. "
+                   "זה כלל אגרסיבי: הוא מניח תשואה ממוצעת גבוהה ולא מתחשב בשנים רעות ובאינפלציה.")
+    if not is_demo:
+        with st.popover("הוצאה חודשית", icon=":material/receipt_long:"):
+            with st.form("expense_form", border=False):
+                new_exp = st.number_input("הוצאה חודשית ממוצעת (₪)", value=float(monthly or 0.0), step=100.0, format="%.0f")
+                if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                    save_expense(new_exp)
+                    st.rerun()
 
 if section == SECTIONS[3]:
     rows = []
