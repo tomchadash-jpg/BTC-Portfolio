@@ -11,7 +11,7 @@ import streamlit as st
 
 # Streamlit Cloud re-runs the pages after an update but can keep old copies of our own
 # modules in memory (styles, menu, ...). Reload them on every run so changes always show.
-for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw", "valuation", "onchain", "exchange_cash"):
+for _name in ("ui", "menu", "gate", "accounts", "engine", "insights", "powerlaw", "valuation", "onchain", "exchange_cash", "dedupe", "importer"):
     if _name in sys.modules:
         importlib.reload(sys.modules[_name])
 
