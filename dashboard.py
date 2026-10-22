@@ -101,6 +101,36 @@ def load_xcash():
 EX_HE = {"Coinbox": "קוינבוקס", "Bits of Gold": "ביטס אוף גולד", "Horizon": "הורייזן"}
 
 
+EXP_DDL = """CREATE TABLE IF NOT EXISTS expense_settings (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     UUID          NOT NULL,
+    monthly_ils NUMERIC(14,2) NOT NULL,
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now())"""
+
+
+@st.cache_data(ttl=300)
+def load_expense():
+    """Monthly living expenses (ILS) entered in the app; None if never set."""
+    url, uid = clean(os.getenv("DATABASE_URL")), clean(os.getenv("USER_ID"))
+    if not (url and uid):
+        return None
+    import psycopg
+    with psycopg.connect(url) as c:
+        c.execute(EXP_DDL)
+        r = c.execute("SELECT monthly_ils FROM expense_settings WHERE user_id=%s "
+                      "ORDER BY updated_at DESC LIMIT 1", (uid,)).fetchone()
+    return float(r[0]) if r else None
+
+
+def save_expense(monthly: float):
+    import psycopg
+    with psycopg.connect(clean(os.getenv("DATABASE_URL"))) as c:
+        c.execute(EXP_DDL)
+        c.execute("INSERT INTO expense_settings(user_id, monthly_ils) VALUES (%s, %s)",
+                  (clean(os.getenv("USER_ID")), monthly))
+    load_expense.clear()
+
+
 def save_bank(balance: float):
     import psycopg
     with psycopg.connect(clean(os.getenv("DATABASE_URL"))) as c:
@@ -428,12 +458,33 @@ if section == SECTIONS[0]:
             grid(ccards, "kpi_bank", per_row=min(len(ccards), 3))
         else:
             st.caption("יתרות המזומן עוד לא הוזנו")
-        b1, b2 = st.columns(2)
+        # --- portfolio size as a multiple of a year's spending (25× ≈ the 4% rule) ---
+        monthly = load_expense()
+        if monthly:
+            annual_ils = monthly * 12
+            nw_ils = nw_now * (ils_per_disp if ccy == "USD" else 1.0)
+            mult = nw_ils / annual_ils
+            ecards = [("מכפיל הוצאה שנתית", f"{mult:.1f}×", f"{mult / 25 * 100:.0f}% מיעד 25×"),
+                      ("הוצאה שנתית", f"₪{annual_ils:,.0f}", f"₪{monthly:,.0f} בחודש")]
+            if ccards:
+                mult_all = (nw_ils + extra_ils) / annual_ils
+                ecards.append(("כולל מזומן", f"{mult_all:.1f}×", f"{mult_all * 12:.0f} חודשים"))
+            else:
+                ecards.append(("חודשי מחיה", f"{mult * 12:.0f}", None))
+            grid(ecards, "kpi_expense")
+        b1, b2, b3 = st.columns(3)
         with b1.popover("עדכון עו״ש", icon=":material/account_balance:", use_container_width=True):
             with st.form("bank_form", border=False):
                 new_bal = st.number_input("יתרה בעו״ש (₪)", value=float(bank_ils or 0.0), step=100.0, format="%.0f")
                 if st.form_submit_button("שמירה", type="primary", use_container_width=True):
                     save_bank(new_bal)
+                    st.rerun()
+        with b3.popover("הוצאה חודשית", icon=":material/receipt_long:", use_container_width=True):
+            st.caption("ההוצאה החודשית הממוצעת שלך. משמשת לחישוב כמה שנות הוצאה התיק מכסה.")
+            with st.form("expense_form", border=False):
+                new_exp = st.number_input("הוצאה חודשית (₪)", value=float(monthly or 0.0), step=100.0, format="%.0f")
+                if st.form_submit_button("שמירה", type="primary", use_container_width=True):
+                    save_expense(new_exp)
                     st.rerun()
         with b2.popover("תיקון קוינבוקס", icon=":material/payments:", use_container_width=True):
             st.caption("היתרה מתעדכנת לבד מהמיילים (הפקדות וקניות). אם היא לא תואמת למה שמופיע בקוינבוקס, "
@@ -482,6 +533,7 @@ if section == SECTIONS[0]:
 - **עמלות משיכה מהבורסות**: BTC שהבורסה ניכתה ממך כשמשכת לארנק. זו עמלת שירות של הבורסה, לא עמלת רשת, והיא יכולה להיות פרופורציונלית לסכום.
 - **TWR**: התשואה של ההשקעה עצמה, בלי קשר לכמה כסף הוספת ומתי. אם כל שקל שהושקע שווה היום 1% פחות, זה -1.0%. מתאים להשוואה מול SPY, QQQ ו-BTC.
 - **CAGR**: אותה תשואה מתורגמת לקצב שנתי ממוצע. אם עברו כשנה וחצי ו-TWR הוא -1.0%, ה-CAGR יהיה בערך -0.6% בשנה.
+- **מכפיל הוצאה שנתית**: שווי התיק (לפי התיקים שבחרת) חלקי ההוצאה השנתית שלך, כלומר לכמה שנות מחיה הוא מספיק בלי הכנסה ובלי תשואה. 25× הוא היעד המקובל לעצמאות כלכלית (כלל ה-4%: אפשר למשוך 4% בשנה לאורך זמן). "כולל מזומן" מוסיף את העו״ש והשקלים בבורסה.
 - **Max Drawdown**: הירידה הגדולה ביותר משיא לשפל לפני התאוששות, כלומר כמה כואב היה הרגע הכי גרוע.
     """)
 

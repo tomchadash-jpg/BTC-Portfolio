@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS bank_balances (
     updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
+-- Monthly living expenses, entered by hand in the app (latest row counts); used for the
+-- "portfolio as a multiple of annual spending" card. The app also creates this table itself.
+CREATE TABLE IF NOT EXISTS expense_settings (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     UUID          NOT NULL,
+    monthly_ils NUMERIC(14,2) NOT NULL,
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
 -- Supabase row-level security
 ALTER TABLE transactions       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_snapshots    ENABLE ROW LEVEL SECURITY;
